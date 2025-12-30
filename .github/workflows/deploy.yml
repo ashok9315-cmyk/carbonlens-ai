@@ -1,10 +1,13 @@
 name: Deploy CarbonLens AI
 
+# Manual deployment only - change to automatic when ready
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:  # Manual trigger from GitHub Actions tab
+  # Uncomment below for automatic deployment:
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
 
 env:
   AWS_REGION: us-east-1
