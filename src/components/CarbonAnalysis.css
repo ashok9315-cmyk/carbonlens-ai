@@ -1,0 +1,252 @@
+.carbon-analysis {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.analysis-header {
+  margin-bottom: 2rem;
+}
+
+.analysis-header h1 {
+  font-size: 2.5rem;
+  color: #2c3e50;
+  margin: 0 0 0.5rem 0;
+}
+
+.analysis-header p {
+  font-size: 1.1rem;
+  color: #7f8c8d;
+  margin: 0;
+}
+
+.analysis-content {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 2rem;
+}
+
+.calculations-list {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  border: 1px solid #e1e8ed;
+  height: fit-content;
+}
+
+.calculations-list h3 {
+  font-size: 1.2rem;
+  color: #2c3e50;
+  margin: 0 0 1.5rem 0;
+}
+
+.calculation-item {
+  padding: 1rem;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.calculation-item:hover {
+  border-color: #3498db;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.1);
+}
+
+.calculation-item.selected {
+  border-color: #3498db;
+  background: #f8fbff;
+}
+
+.calc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.calc-header h4 {
+  font-size: 1rem;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.emissions-total {
+  font-weight: bold;
+  color: #27ae60;
+  font-size: 0.9rem;
+}
+
+.calc-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.route, .transport-mode {
+  font-size: 0.85rem;
+  color: #7f8c8d;
+}
+
+.calc-date {
+  font-size: 0.8rem;
+  color: #95a5a6;
+}
+
+.analysis-details {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  border: 1px solid #e1e8ed;
+}
+
+.calculation-details h3 {
+  font-size: 1.5rem;
+  color: #2c3e50;
+  margin: 0 0 2rem 0;
+}
+
+.emissions-summary {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.total-emissions h2 {
+  font-size: 3rem;
+  margin: 0 0 0.5rem 0;
+  font-weight: bold;
+}
+
+.total-emissions p {
+  font-size: 1.1rem;
+  margin: 0;
+  opacity: 0.9;
+}
+
+.emissions-breakdown {
+  margin-bottom: 2rem;
+}
+
+.emissions-breakdown h4 {
+  font-size: 1.2rem;
+  color: #2c3e50;
+  margin: 0 0 1rem 0;
+}
+
+.breakdown-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.breakdown-item {
+  display: grid;
+  grid-template-columns: 120px 1fr 80px;
+  align-items: center;
+  gap: 1rem;
+}
+
+.category-label {
+  font-size: 0.9rem;
+  color: #2c3e50;
+  font-weight: 500;
+}
+
+.category-bar {
+  height: 20px;
+  background: #ecf0f1;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.category-value {
+  font-size: 0.9rem;
+  color: #2c3e50;
+  font-weight: 500;
+  text-align: right;
+}
+
+.route-info {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.route-info h4 {
+  font-size: 1.1rem;
+  color: #2c3e50;
+  margin: 0 0 1rem 0;
+}
+
+.route-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.route-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+.route-item .label {
+  font-weight: 500;
+  color: #7f8c8d;
+}
+
+.route-item .value {
+  color: #2c3e50;
+}
+
+.no-selection {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #7f8c8d;
+}
+
+.no-selection h3 {
+  font-size: 1.5rem;
+  margin: 0 0 1rem 0;
+}
+
+.no-selection p {
+  font-size: 1rem;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .carbon-analysis {
+    padding: 1rem;
+  }
+  
+  .analysis-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .analysis-header h1 {
+    font-size: 2rem;
+  }
+  
+  .breakdown-item {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .category-value {
+    text-align: left;
+  }
+}

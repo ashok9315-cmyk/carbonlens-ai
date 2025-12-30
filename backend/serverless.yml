@@ -1,0 +1,176 @@
+service: carbonlensaibackend
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+  memorySize: 512
+  timeout: 30
+  environment:
+    TABLE_NAME: carbonlens-ai-data-dev
+    DOCUMENTS_BUCKET: carbonlens-ai-docs-dev-790756194179
+    STAGE: ${self:provider.stage}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TABLE_NAME}"
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+        - s3:DeleteObject
+      Resource: "arn:aws:s3:::${self:provider.environment.DOCUMENTS_BUCKET}/*"
+    - Effect: Allow
+      Action:
+        - textract:DetectDocumentText
+        - textract:AnalyzeDocument
+        - rekognition:DetectText
+        - comprehend:DetectEntities
+        - comprehend:ClassifyDocument
+        - bedrock:InvokeModel
+      Resource: "*"
+
+functions:
+  processDocument:
+    handler: src/handlers/documentProcessor.handler
+    events:
+      - http:
+          path: /process-document
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  calculateCarbon:
+    handler: src/handlers/carbonCalculator.handler
+    events:
+      - http:
+          path: /calculate-carbon
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  getOptimizations:
+    handler: src/handlers/optimizationEngine.handler
+    events:
+      - http:
+          path: /optimizations
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  generateCertificate:
+    handler: src/handlers/certificateGenerator.handler
+    events:
+      - http:
+          path: /certificate
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+      - http:
+          path: /certificate/{id}
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  getDashboardData:
+    handler: src/handlers/dashboardData.handler
+    events:
+      - http:
+          path: /dashboard
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  seedTestData:
+    handler: src/handlers/seedTestData.handler
+    events:
+      - http:
+          path: /seed-test-data
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+  
+  migrateUserData:
+    handler: src/handlers/migrateUserData.handler
+    events:
+      - http:
+          path: /migrate-user-data
+          method: post
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - x-user-email
+            allowCredentials: false
+
+resources:
+  Resources: {}
