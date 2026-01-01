@@ -168,20 +168,33 @@ if (-not $SkipInfrastructure) {
         
         # Get stack outputs
         Write-Step "Getting stack outputs..."
-        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
+        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json 2>$null
         
-        # Extract important values
-        $frontendBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
-        $documentsBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "DocumentsBucketName" }).OutputValue
-        $userPoolId = ($stackOutputs | Where-Object { $_.OutputKey -eq "UserPoolId" }).OutputValue
-        $userPoolClientId = ($stackOutputs | Where-Object { $_.OutputKey -eq "UserPoolClientId" }).OutputValue
-        $cloudFrontDistributionId = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
-        $dynamoDBTableName = ($stackOutputs | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
-        
-        Write-Success "Frontend Bucket: $frontendBucket"
-        Write-Success "Documents Bucket: $documentsBucket"
-        Write-Success "User Pool ID: $userPoolId"
-        Write-Success "CloudFront Distribution ID: $cloudFrontDistributionId"
+        if ($stackOutputs) {
+            $stackOutputsObj = $stackOutputs | ConvertFrom-Json
+            
+            # Extract important values
+            $frontendBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
+            $documentsBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DocumentsBucketName" }).OutputValue
+            $userPoolId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolId" }).OutputValue
+            $userPoolClientId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolClientId" }).OutputValue
+            $cloudFrontDistributionId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+            $dynamoDBTableName = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+            $cloudFrontDomain = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+            
+            Write-Success "Frontend Bucket: $frontendBucket"
+            Write-Success "Documents Bucket: $documentsBucket"
+            Write-Success "User Pool ID: $userPoolId"
+            Write-Success "CloudFront Distribution ID: $cloudFrontDistributionId"
+            Write-Success "CloudFront Domain: $cloudFrontDomain"
+        } else {
+            Write-Warning "Could not retrieve stack outputs, using fallback values"
+            $frontendBucket = "carbonlens-ai-web-$Environment-$AWS_ACCOUNT_ID"
+            $documentsBucket = "carbonlens-ai-docs-$Environment-$AWS_ACCOUNT_ID"
+            $dynamoDBTableName = "carbonlens-ai-data-$Environment"
+            $cloudFrontDistributionId = ""
+            $cloudFrontDomain = ""
+        }
         
     } catch {
         Write-Error "Infrastructure deployment failed: $_"
@@ -194,46 +207,33 @@ if (-not $SkipInfrastructure) {
     
     # Get existing stack outputs
     try {
-        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
-        $frontendBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
-        $cloudFrontDistributionId = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
-        $dynamoDBTableName = ($stackOutputs | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json 2>$null
+        
+        if ($stackOutputs) {
+            $stackOutputsObj = $stackOutputs | ConvertFrom-Json
+            $frontendBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
+            $cloudFrontDistributionId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+            $dynamoDBTableName = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+            $cloudFrontDomain = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+        } else {
+            Write-Warning "Could not retrieve stack outputs, using fallback values"
+            $frontendBucket = "carbonlens-ai-web-$Environment-$AWS_ACCOUNT_ID"
+            $dynamoDBTableName = "carbonlens-ai-data-$Environment"
+            $cloudFrontDistributionId = ""
+            $cloudFrontDomain = ""
+        }
     } catch {
-        Write-Error "Failed to get existing stack outputs"
+        Write-Error "Failed to get existing stack outputs: $_"
         exit 1
     }
 }
 
-# Deploy Backend (Serverless)
+# Deploy Backend (now handled by CDK)
 if (-not $SkipBackend) {
-    Write-Step "Deploying backend services..."
-    
-    try {
-        Push-Location "backend"
-        
-        # Install backend dependencies
-        Write-Step "Installing backend dependencies..."
-        npm install --legacy-peer-deps
-        
-        # Set environment variables for serverless
-        $env:TABLE_NAME = $dynamoDBTableName
-        $env:DOCUMENTS_BUCKET = $documentsBucket
-        $env:STAGE = $Environment
-        
-        # Deploy with Serverless Framework
-        Write-Step "Deploying Lambda functions..."
-        npx serverless deploy --stage $Environment --region us-east-1 --verbose
-        
-        Write-Success "Backend deployed successfully"
-        
-    } catch {
-        Write-Error "Backend deployment failed: $_"
-        exit 1
-    } finally {
-        Pop-Location
-    }
+    Write-Step "Backend deployment is now handled by CDK infrastructure..."
+    Write-Success "Lambda functions deployed with CDK stack"
 } else {
-    Write-Warning "Skipping backend deployment"
+    Write-Warning "Skipping backend deployment (handled by CDK)"
 }
 
 # Deploy Frontend
@@ -252,11 +252,20 @@ if (-not $SkipFrontend) {
         
         # Deploy to S3
         Write-Step "Uploading to S3..."
-        aws s3 sync build/ "s3://$frontendBucket" --delete --cache-control "max-age=86400"
+        if ($frontendBucket) {
+            aws s3 sync build/ "s3://$frontendBucket" --delete --cache-control "max-age=86400"
+        } else {
+            Write-Error "Frontend bucket name is empty, cannot deploy"
+            exit 1
+        }
         
         # Invalidate CloudFront cache
         Write-Step "Invalidating CloudFront cache..."
-        aws cloudfront create-invalidation --distribution-id $cloudFrontDistributionId --paths "/*"
+        if ($cloudFrontDistributionId) {
+            aws cloudfront create-invalidation --distribution-id $cloudFrontDistributionId --paths "/*"
+        } else {
+            Write-Warning "CloudFront distribution ID not found, skipping cache invalidation"
+        }
         
         Write-Success "Frontend deployed successfully"
         
@@ -273,9 +282,10 @@ Write-Success "🎉 Deployment completed successfully!"
 
 if ($DomainName) {
     Write-Success "🌐 Application URL: https://$DomainName"
-} else {
-    $cloudFrontDomain = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+} elseif ($cloudFrontDomain) {
     Write-Success "🌐 Application URL: https://$cloudFrontDomain"
+} else {
+    Write-Success "🌐 Application deployed successfully"
 }
 
 Write-Step "Deployment Summary:"

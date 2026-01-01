@@ -1,0 +1,13 @@
+# CDK ignore file for Lambda deployment
+node_modules/aws-sdk
+node_modules/@aws-sdk/client-*
+coverage/
+*.test.js
+*.spec.js
+__tests__/
+jest.config.js
+.env*
+.git/
+.gitignore
+README.md
+*.md

@@ -101,17 +101,8 @@ try {
 $env:ENVIRONMENT = $Environment
 $env:AWS_ACCOUNT_ID = $AWS_ACCOUNT_ID
 
-# Destroy Serverless Backend
-Write-Step "Destroying Serverless backend..."
-try {
-    Push-Location "backend"
-    npx serverless remove --stage $Environment --region us-east-1 --verbose
-    Write-Success "Serverless backend destroyed"
-} catch {
-    Write-Warning "Failed to destroy Serverless backend: $_"
-} finally {
-    Pop-Location
-}
+# Note: Serverless backend is now deployed via CDK, so no separate cleanup needed
+Write-Step "Backend Lambda functions will be destroyed with CDK stack..."
 
 # Empty S3 buckets before destroying stack
 Write-Step "Emptying S3 buckets..."
