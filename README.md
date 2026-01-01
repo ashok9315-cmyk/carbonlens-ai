@@ -1,5 +1,7 @@
 # CarbonLens AI - Intelligent Supply Chain Carbon Footprint Tracker
 
+🚀 **Custom Domain Setup in Progress** - The CI/CD pipeline will now automatically create SSL certificates and configure the custom domain `dev-carbonlens-ai.solutionsynth.cloud`
+
 ## Overview
 CarbonLens AI is an intelligent platform that automatically tracks and analyzes the carbon footprint of products throughout their entire supply chain journey, using AI to extract logistics data and provide actionable recommendations.
 
