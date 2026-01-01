@@ -1,0 +1,114 @@
+{
+  "deployment": {
+    "environment": "dev",
+    "status": "success",
+    "timestamp": "2026-01-01 07:37:15 UTC",
+    "branch": "develop",
+    "commit": "bad1969b0ddc444f19f5836b118d59d9794fe6b8",
+    "actor": "ashok",
+    "duration": "",
+    "message": "feat: Complete deployment notification system with comprehensive artifact tracking
+
+ Major Enhancements:
+
+Email Notifications:
+- Rich HTML email templates with deployment summaries
+- Comprehensive artifact details (Lambda, S3, DynamoDB, Cognito)
+- AWS SES integration with fallback to file-based emails
+- Professional styling with clickable links and infrastructure tables
+
+Dynamic Configuration System:
+- Centralized environment configuration (scripts/environment-config.sh)
+- Dynamic domain generation based on environment
+- Reusable functions for all deployment scripts
+- Environment-specific feature flags and settings
+
+Cognito Configuration Fix:
+- Fixed placeholder client ID issues in deployed applications
+- Dynamic frontend config updates with real Cognito values
+- Environment-specific .env file generation
+- Proper CI/CD integration for config updates
+
+Enhanced Build Summaries:
+- Fixed URL masking issues in build summaries
+- Dynamic URL resolution (custom domain  CloudFront fallback)
+- Comprehensive infrastructure metrics and artifact tracking
+- JSON summaries for webhook integrations
+
+Notification Integrations:
+- Enhanced GitHub Actions workflows with email support
+- Slack webhook integration with rich message formatting
+- Microsoft Teams webhook support with action buttons
+- Multi-channel notification system (Email + Slack + Teams)
+
+Testing & Quality:
+- Comprehensive unit test suites for frontend components
+- Backend handler tests with proper mocking
+- Enhanced test coverage and CI/CD integration
+- ESLint fixes for cleaner code
+
+Documentation:
+- Complete GitHub secrets setup guide
+- Email notification configuration guide
+- Dynamic environment configuration documentation
+- Deployment notification setup instructions
+
+ Technical Improvements:
+- Environment-agnostic configuration management
+- Improved error handling and fallback mechanisms
+- Professional email templates with mobile responsiveness
+- Enhanced security with proper secret management
+- Cross-platform compatibility improvements
+
+ Key Features:
+- Professional deployment notifications similar to GitHub's workflow emails
+- Complete infrastructure visibility with all AWS service details
+- Automatic SSL certificate management and custom domain setup
+- Real-time deployment status with comprehensive artifact tracking
+- Multi-environment support (dev/staging/prod) with dynamic configuration
+
+This completes the transformation to a production-ready deployment system with
+comprehensive monitoring, notifications, and professional-grade CI/CD workflows."
+  },
+  "application": {
+    "name": "carbonlens-ai",
+    "url": "https://dev-carbonlens-ai.solutionsynth.cloud",
+    "domain": "dev-carbonlens-ai.solutionsynth.cloud",
+    "region": "us-east-1"
+  },
+  "infrastructure": {
+    "stackName": "carbonlens-ai-dev",
+    "cloudfront": {
+      "domain": "",
+      "distributionId": "",
+      "status": "N/A"
+    },
+    "apiGateway": {
+      "url": "",
+      "endpoints": "0"
+    },
+    "lambda": {
+      "functionCount": "0"
+    },
+    "s3": {
+      "frontendBucket": "",
+      "objectCount": "0",
+      "size": "N/A"
+    },
+    "dynamodb": {
+      "tableName": "carbonlens-ai-data-dev",
+      "itemCount": "0",
+      "sizeKB": "0"
+    },
+    "cognito": {
+      "userPoolId": "",
+      "userCount": "0"
+    }
+  },
+  "artifacts": {
+    "recentFiles": "",
+    "lambdaFunctions": [
+  "[]"
+]
+  }
+}

@@ -392,6 +392,35 @@ send_email_summary() {
 EOF
 )
         
+        # Send via Gmail SMTP if Gmail credentials are available
+        if [ -n "$GMAIL_USER" ] && [ -n "$GMAIL_APP_PASSWORD" ]; then
+            write_step "Sending email via Gmail SMTP..."
+            
+            # Create email with proper headers
+            EMAIL_CONTENT=$(cat <<EOF
+To: $email_recipient
+From: CarbonLens AI <$GMAIL_USER>
+Subject: $email_subject
+Content-Type: text/html; charset=UTF-8
+
+$HTML_BODY
+EOF
+)
+            
+            # Send via Gmail SMTP using curl
+            if echo "$EMAIL_CONTENT" | curl -s --url 'smtps://smtp.gmail.com:465' \
+                --ssl-reqd \
+                --mail-from "$GMAIL_USER" \
+                --mail-rcpt "$email_recipient" \
+                --user "$GMAIL_USER:$GMAIL_APP_PASSWORD" \
+                --upload-file - > /dev/null 2>&1; then
+                write_success "Email sent successfully via Gmail SMTP"
+                return 0
+            else
+                write_warning "Failed to send via Gmail SMTP"
+            fi
+        fi
+        
         # Send via AWS SES if available
         if command -v aws >/dev/null 2>&1; then
             write_step "Attempting to send via AWS SES..."
@@ -445,6 +474,137 @@ EOF
             EMAIL_FILE="deployment-email-$ENVIRONMENT-$(date +%Y%m%d-%H%M%S).html"
             echo "$HTML_BODY" > "$EMAIL_FILE"
             write_success "Email content saved to: $EMAIL_FILE"
+        fi
+    fi
+    
+    # Send Slack notification if webhook is configured
+    if [ -n "$SLACK_WEBHOOK_URL" ]; then
+        write_step "Sending Slack notification..."
+        
+        SLACK_MESSAGE=$(cat <<EOF
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "🚀 CarbonLens AI Deployment $([ "$STATUS" = "success" ] && echo "SUCCESS" || echo "FAILED")"
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": "*Environment:* $ENVIRONMENT"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Status:* $([ "$STATUS" = "success" ] && echo "✅ Success" || echo "❌ Failed")"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Timestamp:* $TIMESTAMP"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Actor:* $ACTOR"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Infrastructure Details:*\n☁️ CloudFront: ${CLOUDFRONT_DOMAIN:-N/A}\n🔌 API Gateway: ${API_URL:-N/A}\n⚡ Lambda Functions: ${LAMBDA_COUNT:-0} deployed\n🪣 S3 Objects: ${OBJECT_COUNT:-0} files\n🗄️ DynamoDB: ${ITEM_COUNT:-0} items"
+      }
+    }$([ -n "$APP_URL" ] && echo ",
+    {
+      \"type\": \"actions\",
+      \"elements\": [
+        {
+          \"type\": \"button\",
+          \"text\": {
+            \"type\": \"plain_text\",
+            \"text\": \"🌐 View Application\"
+          },
+          \"url\": \"$APP_URL\",
+          \"style\": \"primary\"
+        },
+        {
+          \"type\": \"button\",
+          \"text\": {
+            \"type\": \"plain_text\",
+            \"text\": \"📊 AWS Console\"
+          },
+          \"url\": \"https://console.aws.amazon.com/cloudformation/home?region=$AWS_REGION\"
+        }
+      ]
+    }")
+  ]
+}
+EOF
+)
+        
+        if curl -X POST -H 'Content-type: application/json' \
+            --data "$SLACK_MESSAGE" \
+            "$SLACK_WEBHOOK_URL" > /dev/null 2>&1; then
+            write_success "Slack notification sent successfully"
+        else
+            write_warning "Failed to send Slack notification"
+        fi
+    fi
+    
+    # Send Discord notification if webhook is configured
+    if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+        write_step "Sending Discord notification..."
+        
+        DISCORD_MESSAGE=$(cat <<EOF
+{
+  "embeds": [
+    {
+      "title": "🚀 CarbonLens AI Deployment $([ "$STATUS" = "success" ] && echo "SUCCESS" || echo "FAILED")",
+      "color": $([ "$STATUS" = "success" ] && echo "3066993" || echo "15158332"),
+      "fields": [
+        {
+          "name": "Environment",
+          "value": "$ENVIRONMENT",
+          "inline": true
+        },
+        {
+          "name": "Status", 
+          "value": "$([ "$STATUS" = "success" ] && echo "✅ Success" || echo "❌ Failed")",
+          "inline": true
+        },
+        {
+          "name": "Actor",
+          "value": "$ACTOR",
+          "inline": true
+        },
+        {
+          "name": "Infrastructure",
+          "value": "☁️ CloudFront: ${CLOUDFRONT_DOMAIN:-N/A}\\n🔌 API: ${API_URL:-N/A}\\n⚡ Lambda: ${LAMBDA_COUNT:-0} functions\\n🪣 S3: ${OBJECT_COUNT:-0} files",
+          "inline": false
+        }$([ -n "$APP_URL" ] && echo ",
+        {
+          \"name\": \"Application URL\",
+          \"value\": \"[$APP_URL]($APP_URL)\",
+          \"inline\": false
+        }")
+      ],
+      "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+    }
+  ]
+}
+EOF
+)
+        
+        if curl -X POST -H 'Content-type: application/json' \
+            --data "$DISCORD_MESSAGE" \
+            "$DISCORD_WEBHOOK_URL" > /dev/null 2>&1; then
+            write_success "Discord notification sent successfully"
+        else
+            write_warning "Failed to send Discord notification"
         fi
     fi
 }
