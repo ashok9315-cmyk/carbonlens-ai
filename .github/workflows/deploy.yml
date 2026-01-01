@@ -181,6 +181,25 @@ jobs:
             echo "✅ Found existing certificate: $EXISTING_CERT"
           else
             echo "❌ No existing certificate found"
+            
+            # Auto-create certificate if hosted zone is provided
+            if [ -n "${{ secrets.HOSTED_ZONE_ID }}" ]; then
+              echo "🔐 Creating SSL certificate automatically..."
+              chmod +x scripts/setup-certificate.sh
+              
+              # Run certificate setup script
+              CERT_OUTPUT=$(./scripts/setup-certificate.sh -d "${{ secrets.DEV_DOMAIN_NAME }}" -z "${{ secrets.HOSTED_ZONE_ID }}")
+              
+              # Extract certificate ARN from output
+              NEW_CERT_ARN=$(echo "$CERT_OUTPUT" | grep "CERTIFICATE_ARN=" | cut -d'=' -f2)
+              
+              if [ -n "$NEW_CERT_ARN" ]; then
+                echo "certificate_arn=$NEW_CERT_ARN" >> $GITHUB_OUTPUT
+                echo "✅ Certificate created successfully: $NEW_CERT_ARN"
+              else
+                echo "❌ Failed to create certificate"
+              fi
+            fi
           fi
         fi
 
