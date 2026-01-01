@@ -23,6 +23,32 @@ CarbonLens AI is an intelligent platform that automatically tracks and analyzes 
 - QR code certificate verification
 - Custom domain with professional SSL
 
+## 📚 Documentation
+
+### **Public Documentation (In Git)**
+- `README.md` - This overview and quick start guide
+- `QUICK_START.md` - Fast setup instructions
+- `docs/USER_GUIDE.md` - Complete user manual
+- `docs/API.md` - API reference and examples
+- `docs/TESTING_GUIDE.md` - Testing procedures
+- `docs/AUTHENTICATION_GUIDE.md` - Auth setup and configuration
+- `docs/DATA_STORAGE_ARCHITECTURE.md` - Database design and structure
+
+### **Deployment Documentation (Generated Locally)**
+Additional documentation is generated during deployment containing environment-specific details:
+- Deployment guides with actual AWS resource IDs
+- Environment configuration details
+- Infrastructure setup instructions
+- Security and credential management guides
+
+**Note**: Deployment-specific documentation contains sensitive information and is excluded from the public repository for security.
+
+### **View Available Documentation**
+```bash
+# List all documentation and Git status
+./scripts/list-documentation.sh
+```
+
 ## 🚀 Live Application
 - **Custom Domain**: https://carbonlens-ai.solutionsynth.cloud
 - **CloudFront Backup**: https://d1dqupktcu8kce.cloudfront.net
@@ -33,25 +59,21 @@ CarbonLens AI is an intelligent platform that automatically tracks and analyzes 
 ## 🛠️ Deployment Scripts
 
 ### **Full Deployment with Custom Domain**
-```powershell
+```bash
 # Deploy entire application with custom domain support
-.\scripts\deploy-with-domain.ps1 -CertificateArn 'arn:aws:acm:us-east-1:790756194179:certificate/cb1674fc-bed9-4913-848b-9a40be448689' -HostedZoneId 'Z02373041SS8TKQHXZLAR'
+./scripts/deploy.sh -e prod -d 'carbonlens-ai.solutionsynth.cloud' -c 'arn:aws:acm:us-east-1:790756194179:certificate/cb1674fc-bed9-4913-848b-9a40be448689' -z 'Z02373041SS8TKQHXZLAR'
 ```
 
 ### **Backend Only Deployment**
-```powershell
-# Deploy serverless backend functions
-cd backend
-npx serverless deploy --stage dev --region us-east-1
-cd ..
+```bash
+# Backend is now deployed via CDK infrastructure
+./scripts/deploy.sh -e dev --skip-frontend
 ```
 
 ### **Frontend Only Deployment**
-```powershell
+```bash
 # Build and deploy frontend
-npm run build
-aws s3 sync build/ s3://carbonlens-ai-web-dev-790756194179 --delete
-aws cloudfront create-invalidation --distribution-id E2P398QOXMEM5S --paths "/*"
+./scripts/deploy.sh -e dev --skip-infrastructure --skip-backend
 ```
 
 **Features:**

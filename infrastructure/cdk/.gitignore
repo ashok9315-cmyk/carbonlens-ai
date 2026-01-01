@@ -1,0 +1,41 @@
+# CDK specific ignores
+
+# Compiled TypeScript files
+*.js
+*.d.ts
+lib/*.js
+lib/*.d.ts
+
+# CDK output directories
+cdk.out/
+cdk-*.out/
+
+# CDK context file (contains environment-specific data)
+cdk.context.json
+
+# Node modules (already covered by root .gitignore but explicit here)
+node_modules/
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+
+# CDK asset directories
+asset.*/
+
+# CDK bootstrap files
+bootstrap-template.yaml
+
+# CDK diff files
+*.diff
+
+# IDE files specific to CDK
+.vscode/settings.json
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -7,7 +7,7 @@ This guide covers the new AWS CDK-based infrastructure deployment for CarbonLens
 ### **Infrastructure as Code with AWS CDK**
 - **AWS CDK v2**: TypeScript-based infrastructure definitions
 - **Multi-Environment**: Dev, Staging, Production environments
-- **Automated Deployment**: PowerShell scripts for consistent deployments
+- **Automated Deployment**: Shell scripts for consistent deployments
 - **CI/CD Integration**: GitHub Actions with environment-specific workflows
 
 ### **AWS Services**
@@ -23,17 +23,17 @@ This guide covers the new AWS CDK-based infrastructure deployment for CarbonLens
 ### **Prerequisites**
 - Node.js 18+
 - AWS CLI v2
-- PowerShell 7+ (Windows/Linux/macOS)
+- PowerShell 7+ (Windows/Linux/macOS) or Bash (Linux/macOS)
 - AWS Account with appropriate permissions
 
 ### **1. Environment Setup**
-```powershell
+```bash
 # Clone and setup
 git clone <repository-url>
 cd carbonlens-ai
 
 # Run setup script
-.\scripts\setup-environment.ps1 -Environment dev
+./scripts/setup-environment.sh -e dev
 ```
 
 ### **2. Configure AWS Credentials**
@@ -43,12 +43,12 @@ aws configure
 ```
 
 ### **3. Deploy to Development**
-```powershell
+```bash
 # Basic deployment (no custom domain)
-.\scripts\deploy.ps1 -Environment dev
+./scripts/deploy.sh -e dev
 
 # With custom domain
-.\scripts\deploy.ps1 -Environment dev -DomainName "dev.carbonlens-ai.yourdomain.com" -CertificateArn "arn:aws:acm:..." -HostedZoneId "Z123..."
+./scripts/deploy.sh -e dev -d "dev.carbonlens-ai.yourdomain.com" -c "arn:aws:acm:..." -z "Z123..."
 ```
 
 ## 📁 Project Structure
@@ -71,10 +71,10 @@ carbonlens-ai/
 │       ├── package.json
 │       └── tsconfig.json
 ├── scripts/                   # Deployment Scripts
-│   ├── deploy.ps1            # Main deployment script
-│   ├── setup-environment.ps1 # Environment setup
-│   ├── destroy.ps1           # Infrastructure cleanup
-│   └── test.ps1              # Test runner
+│   ├── deploy.sh              # Main deployment script
+│   ├── setup-environment.sh   # Environment setup
+│   ├── destroy.sh             # Infrastructure cleanup
+│   └── test-lambda-functions.sh # Test runner
 ├── backend/                   # Serverless Backend
 │   ├── src/handlers/         # Lambda functions
 │   ├── serverless.yml        # Serverless config
@@ -86,13 +86,13 @@ carbonlens-ai/
 ## 🔧 Deployment Scripts
 
 ### **Main Deployment Script**
-```powershell
-.\scripts\deploy.ps1 -Environment <env> [options]
+```bash
+./scripts/deploy.sh -e <env> [options]
 
 Options:
-  -Environment        dev|staging|prod (required)
-  -DomainName        Custom domain (optional)
-  -CertificateArn    SSL certificate ARN (optional)
+  -e, --environment   dev|staging|prod (required)
+  -d, --domain        Custom domain (optional)
+  -c, --certificate   SSL certificate ARN (optional)
   -HostedZoneId      Route 53 hosted zone ID (optional)
   -SkipInfrastructure Skip CDK deployment
   -SkipBackend       Skip Serverless deployment
@@ -100,18 +100,18 @@ Options:
 ```
 
 ### **Environment Setup**
-```powershell
-.\scripts\setup-environment.ps1 -Environment <env>
+```bash
+./scripts/setup-environment.sh -e <env>
 ```
 
 ### **Testing**
-```powershell
-.\scripts\test.ps1 -Component <frontend|backend|all> [-Coverage] [-Watch]
+```bash
+./scripts/test-lambda-functions.sh -e <env> [-d]
 ```
 
 ### **Cleanup**
-```powershell
-.\scripts\destroy.ps1 -Environment <env> [-Force]
+```bash
+./scripts/destroy.sh -e <env> [-f]
 ```
 
 ## 🌍 Multi-Environment Deployment
@@ -121,8 +121,8 @@ Options:
 - **Domain**: Optional custom domain
 - **Purpose**: Feature development and testing
 
-```powershell
-.\scripts\deploy.ps1 -Environment dev
+```bash
+./scripts/deploy.sh -e dev
 ```
 
 ### **Staging Environment**
@@ -130,8 +130,8 @@ Options:
 - **Domain**: staging.yourdomain.com
 - **Purpose**: Pre-production testing
 
-```powershell
-.\scripts\deploy.ps1 -Environment staging -DomainName "staging.carbonlens-ai.yourdomain.com"
+```bash
+./scripts/deploy.sh -e staging -d "staging.carbonlens-ai.yourdomain.com"
 ```
 
 ### **Production Environment**
@@ -139,8 +139,8 @@ Options:
 - **Domain**: yourdomain.com
 - **Purpose**: Live application
 
-```powershell
-.\scripts\deploy.ps1 -Environment prod -DomainName "carbonlens-ai.yourdomain.com"
+```bash
+./scripts/deploy.sh -e prod -d "carbonlens-ai.yourdomain.com"
 ```
 
 ## 🔐 GitHub Secrets Configuration
