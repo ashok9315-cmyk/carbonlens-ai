@@ -12,10 +12,18 @@ Parameters:
   
   DomainName:
     Type: String
-    Default: carbonlens-ai.solutionsynth.cloud
+    Default: ""
+    Description: "Custom domain name (optional)"
   
   CertificateArn:
     Type: String
+    Default: ""
+    Description: "SSL Certificate ARN for custom domain (optional)"
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, ""]]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasCertificate]
 
 Resources:
   # S3 Bucket for Frontend
@@ -123,12 +131,16 @@ Resources:
             OriginAccessControlId: !GetAtt OriginAccessControl.Id
         Enabled: true
         DefaultRootObject: index.html
-        Aliases:
-          - !Ref DomainName
-        ViewerCertificate:
-          AcmCertificateArn: !Ref CertificateArn
-          SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1.2_2021
+        Aliases: !If
+          - UseCustomDomain
+          - [!Ref DomainName]
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - UseCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https

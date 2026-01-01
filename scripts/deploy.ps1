@@ -1,266 +1,288 @@
-# CarbonLens AI Deployment Script for Windows
-# This script deploys the entire CarbonLens AI application to AWS
-# 
-# Features:
-# - Infrastructure deployment via CloudFormation
-# - Backend deployment via Serverless Framework
-# - Frontend build and deployment to S3
-# - Automatic CloudFront cache invalidation
-# - Comprehensive error handling and status reporting
-#
-# Updated: 2025-12-30 - Added enhanced CloudFront cache invalidation
+#!/usr/bin/env pwsh
+
+<#
+.SYNOPSIS
+    Deploy CarbonLens AI application to AWS
+.DESCRIPTION
+    This script deploys the CarbonLens AI application including infrastructure, backend, and frontend
+.PARAMETER Environment
+    The environment to deploy to (dev, staging, prod)
+.PARAMETER DomainName
+    Custom domain name (optional)
+.PARAMETER CertificateArn
+    SSL Certificate ARN (optional)
+.PARAMETER HostedZoneId
+    Route 53 Hosted Zone ID (optional)
+.PARAMETER SkipInfrastructure
+    Skip infrastructure deployment
+.PARAMETER SkipBackend
+    Skip backend deployment
+.PARAMETER SkipFrontend
+    Skip frontend deployment
+.EXAMPLE
+    .\scripts\deploy.ps1 -Environment dev
+.EXAMPLE
+    .\scripts\deploy.ps1 -Environment prod -DomainName "carbonlens-ai.solutionsynth.cloud" -CertificateArn "arn:aws:acm:..." -HostedZoneId "Z123..."
+#>
 
 param(
-    [string]$Environment = "dev",
-    [string]$Region = "us-east-1"
+    [Parameter(Mandatory = $true)]
+    [ValidateSet("dev", "staging", "prod")]
+    [string]$Environment,
+    
+    [Parameter(Mandatory = $false)]
+    [string]$DomainName = "",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$CertificateArn = "",
+    
+    [Parameter(Mandatory = $false)]
+    [string]$HostedZoneId = "",
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipInfrastructure,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipBackend,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipFrontend
 )
 
-$ProjectName = "carbonlens-ai"
-$StackName = "$ProjectName-$Environment"
+# Set error action preference
+$ErrorActionPreference = "Stop"
 
-Write-Host "Deploying CarbonLens AI to AWS" -ForegroundColor Green
-Write-Host "Environment: $Environment" -ForegroundColor Yellow
-Write-Host "Region: $Region" -ForegroundColor Yellow
-Write-Host "Stack: $StackName" -ForegroundColor Yellow
+# Colors for output
+$Green = "`e[32m"
+$Yellow = "`e[33m"
+$Red = "`e[31m"
+$Blue = "`e[34m"
+$Reset = "`e[0m"
 
-# Check prerequisites
-Write-Host "Checking prerequisites..." -ForegroundColor Blue
+function Write-ColorOutput {
+    param([string]$Message, [string]$Color = $Reset)
+    Write-Host "$Color$Message$Reset"
+}
 
+function Write-Step {
+    param([string]$Message)
+    Write-ColorOutput "🚀 $Message" $Blue
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-ColorOutput "✅ $Message" $Green
+}
+
+function Write-Warning {
+    param([string]$Message)
+    Write-ColorOutput "⚠️  $Message" $Yellow
+}
+
+function Write-Error {
+    param([string]$Message)
+    Write-ColorOutput "❌ $Message" $Red
+}
+
+# Validate AWS CLI
 try {
-    $null = aws --version
-    Write-Host "AWS CLI found" -ForegroundColor Green
-}
-catch {
-    Write-Host "AWS CLI not found. Please install AWS CLI first." -ForegroundColor Red
+    aws --version | Out-Null
+    Write-Success "AWS CLI is available"
+} catch {
+    Write-Error "AWS CLI is not installed or not in PATH"
     exit 1
 }
 
+# Validate Node.js
 try {
-    $null = node --version
-    Write-Host "Node.js found" -ForegroundColor Green
-}
-catch {
-    Write-Host "Node.js not found. Please install Node.js first." -ForegroundColor Red
+    node --version | Out-Null
+    Write-Success "Node.js is available"
+} catch {
+    Write-Error "Node.js is not installed or not in PATH"
     exit 1
 }
 
+# Get AWS Account ID
 try {
-    $null = serverless --version
-    Write-Host "Serverless Framework found" -ForegroundColor Green
-}
-catch {
-    Write-Host "Installing Serverless Framework..." -ForegroundColor Yellow
-    npm install -g serverless
-}
-
-# Step 1: Deploy Infrastructure
-Write-Host "Deploying infrastructure..." -ForegroundColor Blue
-
-$deployResult = aws cloudformation deploy `
-    --template-file infrastructure/cloudformation.yml `
-    --stack-name $StackName `
-    --parameter-overrides Environment=$Environment ProjectName=$ProjectName `
-    --capabilities CAPABILITY_NAMED_IAM `
-    --region $Region
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Infrastructure deployment failed" -ForegroundColor Red
+    $AWS_ACCOUNT_ID = aws sts get-caller-identity --query Account --output text
+    Write-Success "AWS Account ID: $AWS_ACCOUNT_ID"
+} catch {
+    Write-Error "Failed to get AWS Account ID. Please check your AWS credentials."
     exit 1
 }
 
-Write-Host "Infrastructure deployed successfully" -ForegroundColor Green
+Write-Step "Starting deployment for environment: $Environment"
 
-# Get stack outputs
-Write-Host "Getting stack outputs..." -ForegroundColor Blue
+# Set environment variables
+$env:ENVIRONMENT = $Environment
+$env:AWS_ACCOUNT_ID = $AWS_ACCOUNT_ID
+if ($DomainName) { $env:DOMAIN_NAME = $DomainName }
+if ($CertificateArn) { $env:CERTIFICATE_ARN = $CertificateArn }
+if ($HostedZoneId) { $env:HOSTED_ZONE_ID = $HostedZoneId }
 
-$FrontendBucket = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue" `
-    --output text
-
-$DocumentsBucket = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='DocumentsBucketName'].OutputValue" `
-    --output text
-
-$UserPoolId = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" `
-    --output text
-
-$UserPoolClientId = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" `
-    --output text
-
-$CloudFrontDomain = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDomainName'].OutputValue" `
-    --output text
-
-Write-Host "Frontend Bucket: $FrontendBucket" -ForegroundColor Cyan
-Write-Host "Documents Bucket: $DocumentsBucket" -ForegroundColor Cyan
-Write-Host "User Pool ID: $UserPoolId" -ForegroundColor Cyan
-Write-Host "User Pool Client ID: $UserPoolClientId" -ForegroundColor Cyan
-Write-Host "CloudFront Domain: $CloudFrontDomain" -ForegroundColor Cyan
-
-# Step 2: Deploy Backend Services
-Write-Host "Deploying backend services..." -ForegroundColor Blue
-
-Push-Location backend
-
-# Install dependencies
-npm install
-
-# Deploy with Serverless
-$serverlessResult = serverless deploy --stage $Environment --region $Region
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Backend deployment failed" -ForegroundColor Red
-    Pop-Location
-    exit 1
-}
-
-# Get API Gateway URL
-$ApiInfo = serverless info --stage $Environment --region $Region
-$ApiUrl = ""
-foreach ($line in $ApiInfo) {
-    if ($line -match "https://.*\.execute-api\..*\.amazonaws\.com/.*") {
-        $ApiUrl = $matches[0]
-        break
-    }
-}
-
-Write-Host "API Gateway URL: $ApiUrl" -ForegroundColor Cyan
-
-Pop-Location
-
-# Step 3: Build and Deploy Frontend
-Write-Host "Building and deploying frontend..." -ForegroundColor Blue
-
-# Install frontend dependencies
-npm install
-
-# Create environment configuration
-$awsConfigContent = @"
-export const awsConfig = {
-  Auth: {
-    region: '$Region',
-    userPoolId: '$UserPoolId',
-    userPoolWebClientId: '$UserPoolClientId',
-  },
-  API: {
-    endpoints: [
-      {
-        name: 'carbonlens-api',
-        endpoint: '$ApiUrl',
-        region: '$Region'
-      }
-    ]
-  }
-};
-"@
-
-$awsConfigContent | Out-File -FilePath "src\aws-config.js" -Encoding UTF8
-
-# Update App.js to use the config
-$appJsPath = "src\App.js"
-$appJsContent = Get-Content $appJsPath -Raw
-
-# Replace the amplify config
-$newImport = "import { awsConfig } from './aws-config';`n`nconst amplifyConfig = awsConfig;"
-$appJsContent = $appJsContent -replace "const amplifyConfig = \{[^}]+\};", $newImport
-
-$appJsContent | Out-File -FilePath $appJsPath -Encoding UTF8
-
-# Build the application
-Write-Host "Building React application..." -ForegroundColor Blue
-npm run build
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Frontend build failed" -ForegroundColor Red
-    exit 1
-}
-
-# Deploy to S3
-Write-Host "Uploading to S3..." -ForegroundColor Blue
-aws s3 sync build/ s3://$FrontendBucket --delete --cache-control "no-cache" --region $Region
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Frontend deployment failed" -ForegroundColor Red
-    exit 1
-}
-
-# Invalidate CloudFront cache
-Write-Host "Invalidating CloudFront cache..." -ForegroundColor Blue
-
-# Try to get distribution ID from CloudFormation stack first
-$DistributionId = aws cloudformation describe-stacks `
-    --stack-name $StackName `
-    --region $Region `
-    --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" `
-    --output text
-
-# If not found in stack, try to find it by domain name
-if (-not $DistributionId -or $DistributionId -eq "None") {
-    $DistributionId = aws cloudfront list-distributions `
-        --query "DistributionList.Items[?Origins.Items[0].DomainName=='$FrontendBucket.s3.$Region.amazonaws.com'].Id" `
-        --output text
-}
-
-# If still not found, try alternative domain format
-if (-not $DistributionId -or $DistributionId -eq "None") {
-    $DistributionId = aws cloudfront list-distributions `
-        --query "DistributionList.Items[?contains(Origins.Items[0].DomainName, '$FrontendBucket')].Id" `
-        --output text
-}
-
-# Known distribution ID as fallback (update this if needed)
-if (-not $DistributionId -or $DistributionId -eq "None") {
-    $DistributionId = "E2P398QOXMEM5S"
-    Write-Host "Using known distribution ID: $DistributionId" -ForegroundColor Yellow
-}
-
-if ($DistributionId -and $DistributionId -ne "None") {
-    Write-Host "Creating CloudFront invalidation for distribution: $DistributionId" -ForegroundColor Yellow
-    $callerReference = Get-Date -Format 'yyyyMMddHHmmss'
-    $invalidationResult = aws cloudfront create-invalidation `
-        --distribution-id $DistributionId `
-        --invalidation-batch "Paths={Quantity=1,Items=[`"/*`"]},CallerReference=$callerReference"
+# Deploy Infrastructure with CDK
+if (-not $SkipInfrastructure) {
+    Write-Step "Deploying infrastructure with AWS CDK..."
     
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "CloudFront cache invalidation initiated successfully" -ForegroundColor Green
-        Write-Host "Cache invalidation may take 5-15 minutes to complete" -ForegroundColor Yellow
-    } else {
-        Write-Host "CloudFront cache invalidation failed, but deployment continues" -ForegroundColor Yellow
+    try {
+        Push-Location "infrastructure/cdk"
+        
+        # Install CDK dependencies
+        Write-Step "Installing CDK dependencies..."
+        npm install
+        
+        # Bootstrap CDK (if needed)
+        Write-Step "Bootstrapping CDK..."
+        npx cdk bootstrap --require-approval never
+        
+        # Build CDK
+        Write-Step "Building CDK..."
+        npm run build
+        
+        # Deploy CDK stack
+        Write-Step "Deploying CDK stack..."
+        $cdkArgs = @(
+            "deploy"
+            "--require-approval", "never"
+            "--context", "environment=$Environment"
+        )
+        
+        if ($DomainName) {
+            $cdkArgs += "--context"
+            $cdkArgs += "domainName=$DomainName"
+        }
+        
+        if ($CertificateArn) {
+            $cdkArgs += "--context"
+            $cdkArgs += "certificateArn=$CertificateArn"
+        }
+        
+        if ($HostedZoneId) {
+            $cdkArgs += "--context"
+            $cdkArgs += "hostedZoneId=$HostedZoneId"
+        }
+        
+        npx cdk @cdkArgs
+        
+        Write-Success "Infrastructure deployed successfully"
+        
+        # Get stack outputs
+        Write-Step "Getting stack outputs..."
+        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
+        
+        # Extract important values
+        $frontendBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
+        $documentsBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "DocumentsBucketName" }).OutputValue
+        $userPoolId = ($stackOutputs | Where-Object { $_.OutputKey -eq "UserPoolId" }).OutputValue
+        $userPoolClientId = ($stackOutputs | Where-Object { $_.OutputKey -eq "UserPoolClientId" }).OutputValue
+        $cloudFrontDistributionId = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+        $dynamoDBTableName = ($stackOutputs | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+        
+        Write-Success "Frontend Bucket: $frontendBucket"
+        Write-Success "Documents Bucket: $documentsBucket"
+        Write-Success "User Pool ID: $userPoolId"
+        Write-Success "CloudFront Distribution ID: $cloudFrontDistributionId"
+        
+    } catch {
+        Write-Error "Infrastructure deployment failed: $_"
+        exit 1
+    } finally {
+        Pop-Location
     }
 } else {
-    Write-Host "Could not find CloudFront distribution ID, skipping cache invalidation" -ForegroundColor Yellow
+    Write-Warning "Skipping infrastructure deployment"
+    
+    # Get existing stack outputs
+    try {
+        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
+        $frontendBucket = ($stackOutputs | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
+        $cloudFrontDistributionId = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+        $dynamoDBTableName = ($stackOutputs | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+    } catch {
+        Write-Error "Failed to get existing stack outputs"
+        exit 1
+    }
 }
 
-Write-Host ""
-Write-Host "🎉 Deployment completed successfully!" -ForegroundColor Green
-Write-Host ""
-Write-Host "📱 Application URLs:" -ForegroundColor Blue
-Write-Host "   Frontend: https://$CloudFrontDomain" -ForegroundColor White
-Write-Host "   API: $ApiUrl" -ForegroundColor White
-Write-Host ""
-Write-Host "🔐 Authentication:" -ForegroundColor Blue
-Write-Host "   User Pool ID: $UserPoolId" -ForegroundColor White
-Write-Host "   Client ID: $UserPoolClientId" -ForegroundColor White
-Write-Host ""
-Write-Host "💾 Storage:" -ForegroundColor Blue
-Write-Host "   Frontend Bucket: $FrontendBucket" -ForegroundColor White
-Write-Host "   Documents Bucket: $DocumentsBucket" -ForegroundColor White
-Write-Host ""
-Write-Host "⚡ CloudFront Distribution: $DistributionId" -ForegroundColor Blue
-Write-Host ""
-Write-Host "🚀 Your CarbonLens AI application is now live!" -ForegroundColor Green
-Write-Host "🌐 Visit https://$CloudFrontDomain to start tracking carbon footprints!" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "📝 Note: If you see caching issues, wait 5-15 minutes for CloudFront invalidation to complete" -ForegroundColor Cyan
+# Deploy Backend (Serverless)
+if (-not $SkipBackend) {
+    Write-Step "Deploying backend services..."
+    
+    try {
+        Push-Location "backend"
+        
+        # Install backend dependencies
+        Write-Step "Installing backend dependencies..."
+        npm install --legacy-peer-deps
+        
+        # Set environment variables for serverless
+        $env:TABLE_NAME = $dynamoDBTableName
+        $env:DOCUMENTS_BUCKET = $documentsBucket
+        $env:STAGE = $Environment
+        
+        # Deploy with Serverless Framework
+        Write-Step "Deploying Lambda functions..."
+        npx serverless deploy --stage $Environment --region us-east-1 --verbose
+        
+        Write-Success "Backend deployed successfully"
+        
+    } catch {
+        Write-Error "Backend deployment failed: $_"
+        exit 1
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Warning "Skipping backend deployment"
+}
+
+# Deploy Frontend
+if (-not $SkipFrontend) {
+    Write-Step "Deploying frontend..."
+    
+    try {
+        # Install frontend dependencies
+        Write-Step "Installing frontend dependencies..."
+        npm install --legacy-peer-deps
+        
+        # Build frontend
+        Write-Step "Building frontend..."
+        $env:CI = "false"  # Treat warnings as warnings, not errors
+        npm run build
+        
+        # Deploy to S3
+        Write-Step "Uploading to S3..."
+        aws s3 sync build/ "s3://$frontendBucket" --delete --cache-control "max-age=86400"
+        
+        # Invalidate CloudFront cache
+        Write-Step "Invalidating CloudFront cache..."
+        aws cloudfront create-invalidation --distribution-id $cloudFrontDistributionId --paths "/*"
+        
+        Write-Success "Frontend deployed successfully"
+        
+    } catch {
+        Write-Error "Frontend deployment failed: $_"
+        exit 1
+    }
+} else {
+    Write-Warning "Skipping frontend deployment"
+}
+
+# Final success message
+Write-Success "🎉 Deployment completed successfully!"
+
+if ($DomainName) {
+    Write-Success "🌐 Application URL: https://$DomainName"
+} else {
+    $cloudFrontDomain = ($stackOutputs | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+    Write-Success "🌐 Application URL: https://$cloudFrontDomain"
+}
+
+Write-Step "Deployment Summary:"
+Write-Host "  Environment: $Environment"
+Write-Host "  Frontend Bucket: $frontendBucket"
+Write-Host "  CloudFront Distribution: $cloudFrontDistributionId"
+if ($DomainName) {
+    Write-Host "  Custom Domain: $DomainName"
+}
+Write-Host "  DynamoDB Table: $dynamoDBTableName"

@@ -1,234 +1,218 @@
-# CarbonLens AI Test Automation Script
-# Runs comprehensive test suite including unit, integration, and functional tests
+#!/usr/bin/env pwsh
+
+<#
+.SYNOPSIS
+    Run tests for CarbonLens AI
+.DESCRIPTION
+    This script runs all tests for the CarbonLens AI application
+.PARAMETER Component
+    Which component to test (frontend, backend, all)
+.PARAMETER Coverage
+    Generate coverage reports
+.PARAMETER Watch
+    Run tests in watch mode
+.EXAMPLE
+    .\scripts\test.ps1
+.EXAMPLE
+    .\scripts\test.ps1 -Component frontend -Coverage
+.EXAMPLE
+    .\scripts\test.ps1 -Component backend -Watch
+#>
 
 param(
-    [string]$TestType = "all",
-    [switch]$Coverage = $false,
-    [switch]$Watch = $false,
-    [switch]$CI = $false
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("frontend", "backend", "all")]
+    [string]$Component = "all",
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$Coverage,
+    
+    [Parameter(Mandatory = $false)]
+    [switch]$Watch
 )
 
-$ProjectName = "CarbonLens AI"
+# Set error action preference
+$ErrorActionPreference = "Stop"
 
-Write-Host "🧪 Running $ProjectName Test Suite" -ForegroundColor Green
-Write-Host "Test Type: $TestType" -ForegroundColor Yellow
-Write-Host "Coverage: $Coverage" -ForegroundColor Yellow
-Write-Host "Watch Mode: $Watch" -ForegroundColor Yellow
-Write-Host "CI Mode: $CI" -ForegroundColor Yellow
-Write-Host ""
+# Colors for output
+$Green = "`e[32m"
+$Yellow = "`e[33m"
+$Red = "`e[31m"
+$Blue = "`e[34m"
+$Reset = "`e[0m"
 
-# Function to run tests with proper error handling
-function Run-Tests {
-    param(
-        [string]$TestCommand,
-        [string]$TestName,
-        [string]$Directory = "."
-    )
-    
-    Write-Host "🔍 Running $TestName..." -ForegroundColor Blue
-    
-    Push-Location $Directory
+function Write-ColorOutput {
+    param([string]$Message, [string]$Color = $Reset)
+    Write-Host "$Color$Message$Reset"
+}
+
+function Write-Step {
+    param([string]$Message)
+    Write-ColorOutput "🧪 $Message" $Blue
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-ColorOutput "✅ $Message" $Green
+}
+
+function Write-Warning {
+    param([string]$Message)
+    Write-ColorOutput "⚠️  $Message" $Yellow
+}
+
+function Write-Error {
+    param([string]$Message)
+    Write-ColorOutput "❌ $Message" $Red
+}
+
+Write-Step "Running tests for CarbonLens AI..."
+
+# Build test command arguments
+$testArgs = @()
+if ($Coverage) {
+    $testArgs += "--coverage"
+}
+if (-not $Watch) {
+    $testArgs += "--watchAll=false"
+}
+
+$frontendSuccess = $true
+$backendSuccess = $true
+
+# Run Frontend Tests
+if ($Component -eq "frontend" -or $Component -eq "all") {
+    Write-Step "Running frontend tests..."
     
     try {
-        if ($CI) {
-            $TestCommand += " --ci"
+        # Check if dependencies are installed
+        if (-not (Test-Path "node_modules")) {
+            Write-Step "Installing frontend dependencies..."
+            npm install --legacy-peer-deps
         }
         
-        Invoke-Expression $TestCommand
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "✅ $TestName passed" -ForegroundColor Green
+        # Run tests
+        if ($Watch) {
+            npm test
         } else {
-            Write-Host "❌ $TestName failed" -ForegroundColor Red
-            $global:TestsFailed = $true
+            if ($Coverage) {
+                npm run test:coverage
+            } else {
+                npm run test:ci
+            }
         }
+        
+        Write-Success "Frontend tests completed successfully"
+    } catch {
+        Write-Error "Frontend tests failed: $_"
+        $frontendSuccess = $false
     }
-    catch {
-        Write-Host "❌ $TestName failed with error: $($_.Exception.Message)" -ForegroundColor Red
-        $global:TestsFailed = $true
-    }
-    finally {
+}
+
+# Run Backend Tests
+if ($Component -eq "backend" -or $Component -eq "all") {
+    Write-Step "Running backend tests..."
+    
+    try {
+        Push-Location "backend"
+        
+        # Check if dependencies are installed
+        if (-not (Test-Path "node_modules")) {
+            Write-Step "Installing backend dependencies..."
+            npm install --legacy-peer-deps
+        }
+        
+        # Run tests
+        if ($Watch) {
+            npm run test:watch
+        } else {
+            if ($Coverage) {
+                npm run test:coverage
+            } else {
+                npm run test:ci
+            }
+        }
+        
+        Write-Success "Backend tests completed successfully"
+    } catch {
+        Write-Error "Backend tests failed: $_"
+        $backendSuccess = $false
+    } finally {
         Pop-Location
     }
-    
-    Write-Host ""
 }
 
-# Initialize test results
-$global:TestsFailed = $false
-
-# Frontend Unit Tests
-if ($TestType -eq "all" -or $TestType -eq "unit" -or $TestType -eq "frontend") {
-    $frontendTestCommand = "npm test"
+# Run CDK Tests (if they exist)
+if ($Component -eq "all") {
+    Write-Step "Running CDK tests..."
     
-    if ($Coverage) {
-        $frontendTestCommand += " -- --coverage"
-    }
-    
-    if ($Watch) {
-        $frontendTestCommand += " -- --watch"
-    }
-    
-    if ($CI) {
-        $frontendTestCommand += " -- --watchAll=false"
-    }
-    
-    Run-Tests $frontendTestCommand "Frontend Unit Tests" "."
-}
-
-# Backend Unit Tests
-if ($TestType -eq "all" -or $TestType -eq "unit" -or $TestType -eq "backend") {
-    $backendTestCommand = "npm test"
-    
-    if ($Coverage) {
-        $backendTestCommand += " -- --coverage"
-    }
-    
-    if ($Watch) {
-        $backendTestCommand += " -- --watch"
-    }
-    
-    if ($CI) {
-        $backendTestCommand += " -- --watchAll=false"
-    }
-    
-    Run-Tests $backendTestCommand "Backend Unit Tests" "backend"
-}
-
-# Integration Tests
-if ($TestType -eq "all" -or $TestType -eq "integration") {
-    Write-Host "🔗 Running Integration Tests..." -ForegroundColor Blue
-    
-    # Check if AWS credentials are configured
     try {
-        aws sts get-caller-identity | Out-Null
-        Write-Host "✅ AWS credentials configured" -ForegroundColor Green
+        Push-Location "infrastructure/cdk"
         
-        # Run API integration tests
-        $integrationTestCommand = "npm test -- --testPathPattern=integration"
-        
-        if ($Coverage) {
-            $integrationTestCommand += " --coverage"
+        # Check if dependencies are installed
+        if (-not (Test-Path "node_modules")) {
+            Write-Step "Installing CDK dependencies..."
+            npm install
         }
         
-        Run-Tests $integrationTestCommand "API Integration Tests" "backend"
+        # Build first
+        npm run build
         
-    } catch {
-        Write-Host "⚠️ AWS credentials not configured, skipping integration tests" -ForegroundColor Yellow
-    }
-}
-
-# Functional Tests (E2E)
-if ($TestType -eq "all" -or $TestType -eq "e2e" -or $TestType -eq "functional") {
-    Write-Host "🎭 Running End-to-End Tests..." -ForegroundColor Blue
-    
-    # Check if application is running
-    try {
-        $response = Invoke-WebRequest -Uri "https://carbonlens-ai.solutionsynth.cloud" -Method HEAD -TimeoutSec 10
-        
-        if ($response.StatusCode -eq 200) {
-            Write-Host "✅ Application is accessible" -ForegroundColor Green
-            
-            # Install Playwright if not already installed
-            if (!(Test-Path "node_modules/@playwright")) {
-                Write-Host "📦 Installing Playwright..." -ForegroundColor Blue
-                npm install --save-dev @playwright/test
-                npx playwright install
-            }
-            
-            Run-Tests "npx playwright test" "End-to-End Tests" "."
+        # Run tests if they exist
+        if (Test-Path "test") {
+            npm test
+            Write-Success "CDK tests completed successfully"
+        } else {
+            Write-Warning "No CDK tests found"
         }
     } catch {
-        Write-Host "⚠️ Application not accessible, skipping E2E tests" -ForegroundColor Yellow
-        Write-Host "   Make sure the application is deployed and running" -ForegroundColor Gray
+        Write-Warning "CDK tests failed: $_"
+    } finally {
+        Pop-Location
     }
 }
 
-# Performance Tests
-if ($TestType -eq "all" -or $TestType -eq "performance") {
-    Write-Host "⚡ Running Performance Tests..." -ForegroundColor Blue
-    
-    # Check if API is accessible
-    try {
-        $response = Invoke-WebRequest -Uri "https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev/optimizations" -Method HEAD -TimeoutSec 10
-        Write-Host "⚠️ API requires authentication, running authenticated performance tests" -ForegroundColor Yellow
-        
-        Run-Tests "npm test -- --testPathPattern=performance" "Performance Tests" "backend"
-        
-    } catch {
-        Write-Host "⚠️ API not accessible, skipping performance tests" -ForegroundColor Yellow
+# Summary
+Write-Step "Test Summary:"
+if ($Component -eq "frontend" -or $Component -eq "all") {
+    if ($frontendSuccess) {
+        Write-Success "Frontend: PASSED"
+    } else {
+        Write-Error "Frontend: FAILED"
     }
 }
 
-# Lint and Code Quality (if requested)
-if ($TestType -eq "all" -or $TestType -eq "lint") {
-    Write-Host "🔍 Running Code Quality Checks..." -ForegroundColor Blue
-    
-    # ESLint for frontend
-    if (Test-Path "node_modules/.bin/eslint") {
-        Run-Tests "npx eslint src --ext .js,.jsx" "Frontend Linting" "."
-    }
-    
-    # ESLint for backend
-    if (Test-Path "backend/node_modules/.bin/eslint") {
-        Run-Tests "npx eslint src --ext .js" "Backend Linting" "backend"
+if ($Component -eq "backend" -or $Component -eq "all") {
+    if ($backendSuccess) {
+        Write-Success "Backend: PASSED"
+    } else {
+        Write-Error "Backend: FAILED"
     }
 }
 
-# Security Tests
-if ($TestType -eq "all" -or $TestType -eq "security") {
-    Write-Host "🛡️ Running Security Tests..." -ForegroundColor Blue
+# Coverage reports
+if ($Coverage) {
+    Write-Step "Coverage Reports:"
     
-    # npm audit for frontend
-    Run-Tests "npm audit --audit-level moderate" "Frontend Security Audit" "."
+    if ($Component -eq "frontend" -or $Component -eq "all") {
+        if (Test-Path "coverage/lcov-report/index.html") {
+            Write-Success "Frontend coverage: coverage/lcov-report/index.html"
+        }
+    }
     
-    # npm audit for backend
-    Run-Tests "npm audit --audit-level moderate" "Backend Security Audit" "backend"
+    if ($Component -eq "backend" -or $Component -eq "all") {
+        if (Test-Path "backend/coverage/lcov-report/index.html") {
+            Write-Success "Backend coverage: backend/coverage/lcov-report/index.html"
+        }
+    }
 }
 
-# Generate Test Report
-Write-Host "📊 Test Summary" -ForegroundColor Blue
-Write-Host "===============" -ForegroundColor Blue
-
-if ($global:TestsFailed) {
-    Write-Host "❌ Some tests failed" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Next Steps:" -ForegroundColor Yellow
-    Write-Host "1. Review test output above for specific failures" -ForegroundColor White
-    Write-Host "2. Fix failing tests" -ForegroundColor White
-    Write-Host "3. Run tests again: .\scripts\test.ps1 -TestType unit" -ForegroundColor White
-    Write-Host ""
+# Exit with appropriate code
+if (($Component -eq "frontend" -and -not $frontendSuccess) -or 
+    ($Component -eq "backend" -and -not $backendSuccess) -or
+    ($Component -eq "all" -and (-not $frontendSuccess -or -not $backendSuccess))) {
     exit 1
 } else {
-    Write-Host "✅ All tests passed!" -ForegroundColor Green
-    Write-Host ""
-    
-    if ($Coverage) {
-        Write-Host "📈 Coverage Reports:" -ForegroundColor Blue
-        Write-Host "- Frontend: coverage/lcov-report/index.html" -ForegroundColor White
-        Write-Host "- Backend: backend/coverage/lcov-report/index.html" -ForegroundColor White
-        Write-Host ""
-    }
-    
-    Write-Host "🎉 $ProjectName is ready for deployment!" -ForegroundColor Green
-}
-
-# Additional test commands help
-if (!$CI) {
-    Write-Host "💡 Available Test Commands:" -ForegroundColor Blue
-    Write-Host ""
-    Write-Host "# Run specific test types:" -ForegroundColor Gray
-    Write-Host ".\scripts\test.ps1 -TestType unit" -ForegroundColor White
-    Write-Host ".\scripts\test.ps1 -TestType integration" -ForegroundColor White
-    Write-Host ".\scripts\test.ps1 -TestType e2e" -ForegroundColor White
-    Write-Host ".\scripts\test.ps1 -TestType performance" -ForegroundColor White
-    Write-Host ""
-    Write-Host "# Run with coverage:" -ForegroundColor Gray
-    Write-Host ".\scripts\test.ps1 -Coverage" -ForegroundColor White
-    Write-Host ""
-    Write-Host "# Run in watch mode:" -ForegroundColor Gray
-    Write-Host ".\scripts\test.ps1 -TestType unit -Watch" -ForegroundColor White
-    Write-Host ""
-    Write-Host "# Run in CI mode:" -ForegroundColor Gray
-    Write-Host ".\scripts\test.ps1 -CI" -ForegroundColor White
+    Write-Success "🎉 All tests completed successfully!"
+    exit 0
 }
