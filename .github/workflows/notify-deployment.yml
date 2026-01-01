@@ -1,0 +1,81 @@
+name: Deployment Notifications
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion != 'cancelled' }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Generate deployment summary
+      run: |
+        chmod +x scripts/send-build-summary.sh
+        
+        STATUS="${{ github.event.workflow_run.conclusion }}"
+        BRANCH="${{ github.event.workflow_run.head_branch }}"
+        
+        # Determine environment based on branch
+        if [ "$BRANCH" = "develop" ]; then
+          ENV="dev"
+          URL="${{ secrets.DEV_DOMAIN_NAME }}"
+        elif [ "$BRANCH" = "main" ]; then
+          ENV="staging"
+          URL="${{ secrets.STAGING_DOMAIN_NAME }}"
+        else
+          ENV="unknown"
+          URL=""
+        fi
+        
+        if [ -n "$URL" ]; then
+          URL="https://$URL"
+        fi
+        
+        ./scripts/send-build-summary.sh -e "$ENV" -s "$STATUS" -u "$URL"
+
+    - name: Send Slack notification (if configured)
+      if: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: |
+        STATUS="${{ github.event.workflow_run.conclusion }}"
+        if [ "$STATUS" = "success" ]; then
+          COLOR="good"
+          EMOJI="✅"
+        else
+          COLOR="danger"
+          EMOJI="❌"
+        fi
+        
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{
+            \"attachments\": [{
+              \"color\": \"$COLOR\",
+              \"title\": \"$EMOJI CarbonLens AI Deployment $STATUS\",
+              \"fields\": [
+                {\"title\": \"Environment\", \"value\": \"${{ github.event.workflow_run.head_branch }}\", \"short\": true},
+                {\"title\": \"Commit\", \"value\": \"${{ github.event.workflow_run.head_sha }}\", \"short\": true},
+                {\"title\": \"Actor\", \"value\": \"${{ github.event.workflow_run.actor.login }}\", \"short\": true}
+              ]
+            }]
+          }" \
+          ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Upload notification artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-notification
+        path: build-summary-*.json
+        retention-days: 7
+      if: always()

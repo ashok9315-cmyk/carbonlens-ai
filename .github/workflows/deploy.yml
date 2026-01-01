@@ -406,6 +406,16 @@ jobs:
     needs: [deploy-dev, deploy-staging, deploy-prod]
     if: always() && (needs.deploy-dev.result == 'success' || needs.deploy-staging.result == 'success' || needs.deploy-prod.result == 'success')
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
     - name: Wait for deployment
       run: sleep 60
 
@@ -431,3 +441,44 @@ jobs:
           curl -f "https://${{ secrets.PROD_DOMAIN_NAME }}" && echo "✅ Production environment healthy" || echo "❌ Production environment unhealthy"
         fi
       continue-on-error: true
+
+    - name: Generate build summary
+      run: |
+        chmod +x scripts/send-build-summary.sh
+        
+        # Determine which environment was deployed
+        DEPLOYED_ENV=""
+        DEPLOYED_URL=""
+        
+        if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
+          DEPLOYED_ENV="dev"
+          DEPLOYED_URL="${{ secrets.DEV_DOMAIN_NAME }}"
+          if [ -z "$DEPLOYED_URL" ]; then
+            # Get CloudFront domain as fallback
+            DEPLOYED_URL=$(aws cloudformation describe-stacks --stack-name "carbonlens-ai-dev" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomainName`].OutputValue' --output text 2>/dev/null || echo "")
+            if [ -n "$DEPLOYED_URL" ]; then
+              DEPLOYED_URL="https://$DEPLOYED_URL"
+            fi
+          else
+            DEPLOYED_URL="https://$DEPLOYED_URL"
+          fi
+        elif [ "${{ needs.deploy-staging.result }}" == "success" ]; then
+          DEPLOYED_ENV="staging"
+          DEPLOYED_URL="https://${{ secrets.STAGING_DOMAIN_NAME }}"
+        elif [ "${{ needs.deploy-prod.result }}" == "success" ]; then
+          DEPLOYED_ENV="prod"
+          DEPLOYED_URL="https://${{ secrets.PROD_DOMAIN_NAME }}"
+        fi
+        
+        if [ -n "$DEPLOYED_ENV" ]; then
+          ./scripts/send-build-summary.sh -e "$DEPLOYED_ENV" -s "success" -u "$DEPLOYED_URL"
+        fi
+      continue-on-error: true
+
+    - name: Upload build summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-summary
+        path: build-summary-*.json
+        retention-days: 30
+      if: always()
