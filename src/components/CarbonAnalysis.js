@@ -1,57 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { API, Auth } from 'aws-amplify';
 import './CarbonAnalysis.css';
 
 const CarbonAnalysis = () => {
   const [calculations, setCalculations] = useState([]);
   const [selectedCalculation, setSelectedCalculation] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
 
-  useEffect(() => {
-    initializeComponent();
-  }, []);
-
-  const initializeComponent = async () => {
-    try {
-      const user = await Auth.currentAuthenticatedUser();
-      const email = user.attributes.email;
-      setUserEmail(email);
-      await loadRecentCalculations(email);
-    } catch (error) {
-      console.error('Error getting authenticated user:', error);
-      // Fallback to demo data for non-authenticated users
-      loadDemoCalculations();
-    }
-  };
-
-  const loadRecentCalculations = async (email) => {
-    try {
-      setLoading(true);
-      const response = await API.get('carbonlens-api', '/dashboard', {
-        headers: {
-          'x-user-email': email
-        }
-      });
-      
-      // Extract calculations from dashboard data
-      const calculationsData = response.calculations || [];
-      setCalculations(calculationsData);
-      
-      // Auto-select the first calculation if available
-      if (calculationsData.length > 0 && !selectedCalculation) {
-        setSelectedCalculation(calculationsData[0]);
-      }
-    } catch (error) {
-      console.error('Error loading calculations:', error);
-      // Fallback to demo data
-      loadDemoCalculations();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadDemoCalculations = () => {
+  const loadDemoCalculations = useCallback(() => {
     // Demo data for non-authenticated users
     const mockCalculations = [
       {
@@ -87,35 +42,46 @@ const CarbonAnalysis = () => {
     ];
     
     setCalculations(mockCalculations);
-  };
+  }, []);
 
-  const calculateNewFootprint = async (shippingData) => {
-    if (!userEmail) {
-      alert('Please log in to calculate carbon footprint');
-      return;
-    }
-
-    setLoading(true);
+  const loadRecentCalculations = useCallback(async (email) => {
     try {
-      const response = await API.post('carbonlens-api', '/calculate-carbon', {
+      const response = await API.get('carbonlens-api', '/dashboard', {
         headers: {
-          'x-user-email': userEmail
-        },
-        body: {
-          documentId: 'manual-calc',
-          shippingData: shippingData
+          'x-user-email': email
         }
       });
       
-      setCalculations(prev => [response, ...prev]);
-      setSelectedCalculation(response);
+      // Extract calculations from dashboard data
+      const calculationsData = response.calculations || [];
+      setCalculations(calculationsData);
+      
+      // Auto-select the first calculation if available
+      if (calculationsData.length > 0 && !selectedCalculation) {
+        setSelectedCalculation(calculationsData[0]);
+      }
     } catch (error) {
-      console.error('Error calculating carbon footprint:', error);
-      alert('Failed to calculate carbon footprint. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('Error loading calculations:', error);
+      // Fallback to demo data
+      loadDemoCalculations();
     }
-  };
+  }, [selectedCalculation, loadDemoCalculations]);
+
+  React.useEffect(() => {
+    const initializeComponent = async () => {
+      try {
+        const user = await Auth.currentAuthenticatedUser();
+        const email = user.attributes.email;
+        await loadRecentCalculations(email);
+      } catch (error) {
+        console.error('Error getting authenticated user:', error);
+        // Fallback to demo data for non-authenticated users
+        loadDemoCalculations();
+      }
+    };
+
+    initializeComponent();
+  }, [loadRecentCalculations, loadDemoCalculations]);
 
   return (
     <div className="carbon-analysis">

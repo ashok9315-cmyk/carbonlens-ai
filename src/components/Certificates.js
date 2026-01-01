@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { API, Auth } from 'aws-amplify';
 import QRCode from 'qrcode';
 import './Certificates.css';
@@ -8,53 +8,8 @@ const Certificates = () => {
   const [selectedCertificate, setSelectedCertificate] = useState(null);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
 
-  useEffect(() => {
-    initializeComponent();
-  }, []);
-
-  useEffect(() => {
-    if (selectedCertificate) {
-      generateQRCode(selectedCertificate.id);
-    }
-  }, [selectedCertificate]);
-
-  const initializeComponent = async () => {
-    try {
-      const user = await Auth.currentAuthenticatedUser();
-      const email = user.attributes.email;
-      setUserEmail(email);
-      await loadCertificates(email);
-    } catch (error) {
-      console.error('Error getting authenticated user:', error);
-      // Fallback to demo data for non-authenticated users
-      loadDemoCertificates();
-    }
-  };
-
-  const loadCertificates = async (email) => {
-    try {
-      setLoading(true);
-      const response = await API.get('carbonlens-api', '/dashboard', {
-        headers: {
-          'x-user-email': email
-        }
-      });
-      
-      // Extract certificates from dashboard data
-      const certificatesData = response.certificates || [];
-      setCertificates(certificatesData);
-    } catch (error) {
-      console.error('Error loading certificates:', error);
-      // Fallback to demo data
-      loadDemoCertificates();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadDemoCertificates = () => {
+  const loadDemoCertificates = useCallback(() => {
     // Demo data for non-authenticated users
     const mockCertificates = [
       {
@@ -146,7 +101,50 @@ const Certificates = () => {
     ];
     
     setCertificates(mockCertificates);
-  };
+  }, []);
+
+  const loadCertificates = useCallback(async (email) => {
+    try {
+      setLoading(true);
+      const response = await API.get('carbonlens-api', '/dashboard', {
+        headers: {
+          'x-user-email': email
+        }
+      });
+      
+      // Extract certificates from dashboard data
+      const certificatesData = response.certificates || [];
+      setCertificates(certificatesData);
+    } catch (error) {
+      console.error('Error loading certificates:', error);
+      // Fallback to demo data
+      loadDemoCertificates();
+    } finally {
+      setLoading(false);
+    }
+  }, [loadDemoCertificates]);
+
+  const initializeComponent = useCallback(async () => {
+    try {
+      const user = await Auth.currentAuthenticatedUser();
+      const email = user.attributes.email;
+      await loadCertificates(email);
+    } catch (error) {
+      console.error('Error getting authenticated user:', error);
+      // Load demo certificates for non-authenticated users
+      loadDemoCertificates();
+    }
+  }, [loadCertificates, loadDemoCertificates]);
+
+  useEffect(() => {
+    initializeComponent();
+  }, [initializeComponent]);
+
+  useEffect(() => {
+    if (selectedCertificate) {
+      generateQRCode(selectedCertificate.id);
+    }
+  }, [selectedCertificate]);
 
   const generateQRCode = async (certificateId) => {
     try {
@@ -166,13 +164,16 @@ const Certificates = () => {
   };
 
   const generateNewCertificate = async () => {
-    if (!userEmail) {
-      alert('Please log in to generate certificates');
-      return;
-    }
-
-    setLoading(true);
     try {
+      const user = await Auth.currentAuthenticatedUser();
+      const userEmail = user.attributes.email;
+      
+      if (!userEmail) {
+        alert('Please log in to generate certificates');
+        return;
+      }
+
+      setLoading(true);
       const response = await API.post('carbonlens-api', '/certificate', {
         headers: {
           'x-user-email': userEmail

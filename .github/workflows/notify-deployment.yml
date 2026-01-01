@@ -21,61 +21,208 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-east-1
 
-    - name: Generate deployment summary
+    - name: Generate comprehensive deployment notification
       run: |
         chmod +x scripts/send-build-summary.sh
+        chmod +x scripts/environment-config.sh
+        
+        # Source environment configuration
+        source scripts/environment-config.sh
         
         STATUS="${{ github.event.workflow_run.conclusion }}"
         BRANCH="${{ github.event.workflow_run.head_branch }}"
+        COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+        ACTOR="${{ github.event.workflow_run.actor.login }}"
+        
+        echo "📧 Processing deployment notification..."
+        echo "Status: $STATUS"
+        echo "Branch: $BRANCH" 
+        echo "Commit: ${COMMIT_SHA:0:8}"
+        echo "Actor: $ACTOR"
         
         # Determine environment based on branch
         if [ "$BRANCH" = "develop" ]; then
           ENV="dev"
-          URL="${{ secrets.DEV_DOMAIN_NAME }}"
+          CUSTOM_DOMAIN_CONFIGURED="true"
         elif [ "$BRANCH" = "main" ]; then
           ENV="staging"
-          URL="${{ secrets.STAGING_DOMAIN_NAME }}"
+          CUSTOM_DOMAIN_CONFIGURED="true"
         else
           ENV="unknown"
-          URL=""
+          CUSTOM_DOMAIN_CONFIGURED="false"
         fi
         
-        if [ -n "$URL" ]; then
-          URL="https://$URL"
+        # Get the best URL for the environment
+        if [ "$ENV" != "unknown" ]; then
+          APP_URL=$(get_environment_url "$ENV" "$CUSTOM_DOMAIN_CONFIGURED")
+          
+          if [ -n "$APP_URL" ]; then
+            echo "🌐 Application URL: $APP_URL"
+          else
+            echo "⚠️ Could not determine application URL"
+          fi
+          
+          # Set email recipient for notifications
+          export DEPLOYMENT_EMAIL="${{ secrets.DEPLOYMENT_EMAIL || secrets.NOTIFICATION_EMAIL }}"
+          
+          # Generate comprehensive build summary with email
+          echo "📧 Generating deployment notification for $ENV environment..."
+          ./scripts/send-build-summary.sh -e "$ENV" -s "$STATUS" -u "$APP_URL"
+        else
+          echo "⚠️ Unknown environment for branch: $BRANCH"
+          export DEPLOYMENT_EMAIL="${{ secrets.DEPLOYMENT_EMAIL || secrets.NOTIFICATION_EMAIL }}"
+          ./scripts/send-build-summary.sh -e "unknown" -s "$STATUS"
         fi
-        
-        ./scripts/send-build-summary.sh -e "$ENV" -s "$STATUS" -u "$URL"
 
     - name: Send Slack notification (if configured)
       if: ${{ secrets.SLACK_WEBHOOK_URL }}
       run: |
         STATUS="${{ github.event.workflow_run.conclusion }}"
+        BRANCH="${{ github.event.workflow_run.head_branch }}"
+        COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+        ACTOR="${{ github.event.workflow_run.actor.login }}"
+        
+        # Source environment configuration for URL
+        source scripts/environment-config.sh
+        
+        # Determine environment and URL
+        if [ "$BRANCH" = "develop" ]; then
+          ENV="dev"
+          APP_URL=$(get_environment_url "dev" "true")
+        elif [ "$BRANCH" = "main" ]; then
+          ENV="staging"  
+          APP_URL=$(get_environment_url "staging" "true")
+        else
+          ENV="unknown"
+          APP_URL=""
+        fi
+        
         if [ "$STATUS" = "success" ]; then
           COLOR="good"
           EMOJI="✅"
+          STATUS_TEXT="SUCCESS"
         else
           COLOR="danger"
           EMOJI="❌"
+          STATUS_TEXT="FAILED"
         fi
         
+        # Create rich Slack message
+        SLACK_MESSAGE=$(cat <<EOF
+{
+  "attachments": [{
+    "color": "$COLOR",
+    "title": "$EMOJI CarbonLens AI Deployment $STATUS_TEXT",
+    "title_link": "$APP_URL",
+    "fields": [
+      {"title": "Environment", "value": "$ENV", "short": true},
+      {"title": "Branch", "value": "$BRANCH", "short": true},
+      {"title": "Commit", "value": "${COMMIT_SHA:0:8}", "short": true},
+      {"title": "Actor", "value": "$ACTOR", "short": true}
+    ],
+    "actions": [
+      {
+        "type": "button",
+        "text": "View Application",
+        "url": "$APP_URL"
+      },
+      {
+        "type": "button", 
+        "text": "View Logs",
+        "url": "${{ github.event.workflow_run.html_url }}"
+      }
+    ],
+    "footer": "CarbonLens AI CI/CD",
+    "ts": $(date +%s)
+  }]
+}
+EOF
+)
+        
+        echo "📱 Sending Slack notification..."
         curl -X POST -H 'Content-type: application/json' \
-          --data "{
-            \"attachments\": [{
-              \"color\": \"$COLOR\",
-              \"title\": \"$EMOJI CarbonLens AI Deployment $STATUS\",
-              \"fields\": [
-                {\"title\": \"Environment\", \"value\": \"${{ github.event.workflow_run.head_branch }}\", \"short\": true},
-                {\"title\": \"Commit\", \"value\": \"${{ github.event.workflow_run.head_sha }}\", \"short\": true},
-                {\"title\": \"Actor\", \"value\": \"${{ github.event.workflow_run.actor.login }}\", \"short\": true}
-              ]
-            }]
-          }" \
+          --data "$SLACK_MESSAGE" \
           ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Send Teams notification (if configured)
+      if: ${{ secrets.TEAMS_WEBHOOK_URL }}
+      run: |
+        STATUS="${{ github.event.workflow_run.conclusion }}"
+        BRANCH="${{ github.event.workflow_run.head_branch }}"
+        COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+        ACTOR="${{ github.event.workflow_run.actor.login }}"
+        
+        # Source environment configuration
+        source scripts/environment-config.sh
+        
+        # Determine environment and URL
+        if [ "$BRANCH" = "develop" ]; then
+          ENV="dev"
+          APP_URL=$(get_environment_url "dev" "true")
+        elif [ "$BRANCH" = "main" ]; then
+          ENV="staging"
+          APP_URL=$(get_environment_url "staging" "true")
+        else
+          ENV="unknown"
+          APP_URL=""
+        fi
+        
+        if [ "$STATUS" = "success" ]; then
+          COLOR="Good"
+          EMOJI="✅"
+          STATUS_TEXT="SUCCESS"
+        else
+          COLOR="Attention"
+          EMOJI="❌"
+          STATUS_TEXT="FAILED"
+        fi
+        
+        # Create Teams message
+        TEAMS_MESSAGE=$(cat <<EOF
+{
+  "@type": "MessageCard",
+  "@context": "http://schema.org/extensions",
+  "themeColor": "$([ "$STATUS" = "success" ] && echo "00FF00" || echo "FF0000")",
+  "summary": "CarbonLens AI Deployment $STATUS_TEXT",
+  "sections": [{
+    "activityTitle": "$EMOJI CarbonLens AI Deployment $STATUS_TEXT",
+    "activitySubtitle": "Environment: $ENV | Branch: $BRANCH",
+    "facts": [
+      {"name": "Environment", "value": "$ENV"},
+      {"name": "Branch", "value": "$BRANCH"},
+      {"name": "Commit", "value": "${COMMIT_SHA:0:8}"},
+      {"name": "Actor", "value": "$ACTOR"},
+      {"name": "Status", "value": "$STATUS_TEXT"}
+    ],
+    "markdown": true
+  }],
+  "potentialAction": [
+    {
+      "@type": "OpenUri",
+      "name": "View Application",
+      "targets": [{"os": "default", "uri": "$APP_URL"}]
+    },
+    {
+      "@type": "OpenUri", 
+      "name": "View Logs",
+      "targets": [{"os": "default", "uri": "${{ github.event.workflow_run.html_url }}"}]
+    }
+  ]
+}
+EOF
+)
+        
+        echo "📢 Sending Teams notification..."
+        curl -X POST -H 'Content-type: application/json' \
+          --data "$TEAMS_MESSAGE" \
+          ${{ secrets.TEAMS_WEBHOOK_URL }}
 
     - name: Upload notification artifacts
       uses: actions/upload-artifact@v4
       with:
         name: deployment-notification
-        path: build-summary-*.json
+        path: |
+          build-summary-*.json
+          deployment-email-*.html
         retention-days: 7
       if: always()

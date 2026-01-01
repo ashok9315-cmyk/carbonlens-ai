@@ -204,6 +204,7 @@ if [ "$SKIP_INFRASTRUCTURE" = false ]; then
     cd ../..
     if ./scripts/update-frontend-config.sh -e "$ENVIRONMENT"; then
         write_success "Frontend configuration updated"
+        write_step "Note: Frontend rebuild will be handled by CI/CD workflow"
     else
         write_warning "Could not update frontend configuration"
     fi
@@ -233,6 +234,7 @@ if [ "$SKIP_INFRASTRUCTURE" = false ]; then
         write_step "Updating frontend configuration..."
         if ./scripts/update-frontend-config.sh -e "$ENVIRONMENT"; then
             write_success "Frontend configuration updated with deployment values"
+            write_step "Note: Frontend rebuild will be handled by CI/CD workflow"
         else
             write_warning "Could not update frontend configuration"
         fi

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar, ResponsiveContainer } from 'recharts';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { API, Auth } from 'aws-amplify';
 import './Dashboard.css';
 
@@ -17,26 +17,8 @@ const Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [userEmail, setUserEmail] = useState('');
 
-  useEffect(() => {
-    initializeComponent();
-  }, []);
-
-  const initializeComponent = async () => {
-    try {
-      const user = await Auth.currentAuthenticatedUser();
-      const email = user.attributes.email;
-      setUserEmail(email);
-      await loadDashboardData(email);
-    } catch (error) {
-      console.error('Error getting authenticated user:', error);
-      // Fallback to demo data for non-authenticated users
-      await loadDashboardData(null);
-    }
-  };
-
-  const loadDashboardData = async (email) => {
+  const loadDashboardData = useCallback(async (email) => {
     try {
       setLoading(true);
       setError(null);
@@ -76,31 +58,23 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadMockData = () => {
-    // Fallback mock data
-    const mockData = {
-      totalEmissions: 0,
-      documentsProcessed: 0,
-      optimizationsSuggested: 0,
-      certificatesGenerated: 0,
-      emissionsTrend: [
-        { month: 'Jan', emissions: 0 },
-        { month: 'Feb', emissions: 0 },
-        { month: 'Mar', emissions: 0 },
-        { month: 'Apr', emissions: 0 },
-        { month: 'May', emissions: 0 },
-        { month: 'Jun', emissions: 0 }
-      ],
-      emissionsByMode: [],
-      recentActivities: [],
-      previousMonth: null,
-      lastUpdated: new Date().toISOString()
-    };
-    
-    setDashboardData(mockData);
-  };
+  const initializeComponent = useCallback(async () => {
+    try {
+      const user = await Auth.currentAuthenticatedUser();
+      const email = user.attributes.email;
+      await loadDashboardData(email);
+    } catch (error) {
+      console.error('Error getting authenticated user:', error);
+      // Fallback to demo data for non-authenticated users
+      await loadDashboardData(null);
+    }
+  }, [loadDashboardData]);
+
+  useEffect(() => {
+    initializeComponent();
+  }, [initializeComponent]);
 
   const calculatePercentageChange = (current, previous) => {
     console.log('Calculating percentage change:', { current, previous });
@@ -247,7 +221,7 @@ const Dashboard = () => {
       <div className="charts-section">
         <div className="chart-container">
           <h3>Emissions Trend (Last 6 Months)</h3>
-          {dashboardData.emissionsTrend.length > 0 ? (
+          {dashboardData.emissionsTrend && dashboardData.emissionsTrend.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={dashboardData.emissionsTrend}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -267,7 +241,7 @@ const Dashboard = () => {
 
         <div className="chart-container">
           <h3>Emissions by Transport Mode</h3>
-          {dashboardData.emissionsByMode.length > 0 ? (
+          {dashboardData.emissionsByMode && dashboardData.emissionsByMode.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -299,7 +273,7 @@ const Dashboard = () => {
       <div className="activities-section">
         <h3>Recent Activities</h3>
         <div className="activities-list">
-          {dashboardData.recentActivities.length > 0 ? (
+          {dashboardData.recentActivities && dashboardData.recentActivities.length > 0 ? (
             dashboardData.recentActivities.map((activity) => (
               <div key={activity.id} className="activity-item">
                 <div className="activity-icon">{getActivityIcon(activity.type)}</div>
@@ -321,7 +295,7 @@ const Dashboard = () => {
       <div className="dashboard-actions">
         <button 
           className="refresh-button" 
-          onClick={loadDashboardData}
+          onClick={() => loadDashboardData()}
           disabled={loading}
         >
           {loading ? 'Refreshing...' : '🔄 Refresh Data'}

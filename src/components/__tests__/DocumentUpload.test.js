@@ -24,7 +24,6 @@ describe('DocumentUpload Component', () => {
     render(<DocumentUpload />);
 
     const file = new File(['test content'], 'test.pdf', { type: 'application/pdf' });
-    const dropZone = screen.getByTestId('drop-zone');
 
     const fileInput = screen.getByLabelText(/browse files/i);
     await user.upload(fileInput, file);

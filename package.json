@@ -6,6 +6,9 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:dev": "env-cmd -f .env.dev react-scripts build",
+    "build:staging": "env-cmd -f .env.staging react-scripts build",
+    "build:prod": "env-cmd -f .env.prod react-scripts build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -34,6 +37,7 @@
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
     "babel-jest": "^30.2.0",
+    "env-cmd": "^10.1.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",

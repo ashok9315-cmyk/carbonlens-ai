@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { API, Auth } from 'aws-amplify';
 import './Optimizations.css';
 
@@ -6,26 +6,8 @@ const Optimizations = () => {
   const [optimizations, setOptimizations] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [userEmail, setUserEmail] = useState('');
 
-  useEffect(() => {
-    initializeComponent();
-  }, []);
-
-  const initializeComponent = async () => {
-    try {
-      const user = await Auth.currentAuthenticatedUser();
-      const email = user.attributes.email;
-      setUserEmail(email);
-      await loadOptimizations(email);
-    } catch (error) {
-      console.error('Error getting authenticated user:', error);
-      // Fallback to demo data for non-authenticated users
-      loadDemoOptimizations();
-    }
-  };
-
-  const loadOptimizations = async (email) => {
+  const loadOptimizations = useCallback(async (email) => {
     setLoading(true);
     try {
       const response = await API.get('carbonlens-api', '/optimizations', {
@@ -45,7 +27,23 @@ const Optimizations = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const initializeComponent = useCallback(async () => {
+    try {
+      const user = await Auth.currentAuthenticatedUser();
+      const email = user.attributes.email;
+      await loadOptimizations(email);
+    } catch (error) {
+      console.error('Error getting authenticated user:', error);
+      // Fallback to demo data for non-authenticated users
+      loadDemoOptimizations();
+    }
+  }, [loadOptimizations]);
+
+  useEffect(() => {
+    initializeComponent();
+  }, [initializeComponent]);
 
   const loadDemoOptimizations = () => {
     try {

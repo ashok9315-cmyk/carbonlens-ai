@@ -223,6 +223,50 @@ jobs:
       env:
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
+    - name: Update frontend config and rebuild
+      shell: bash
+      run: |
+        echo "🔧 Updating frontend configuration with real deployment values..."
+        
+        # Install env-cmd if not already installed
+        npm install env-cmd --save-dev
+        
+        # Update frontend configuration
+        chmod +x scripts/update-frontend-config.sh
+        if ./scripts/update-frontend-config.sh -e dev; then
+          echo "✅ Frontend configuration updated"
+          
+          # Rebuild frontend with real configuration
+          echo "🔨 Rebuilding frontend with updated configuration..."
+          if [ -f ".env.dev" ]; then
+            npm run build:dev
+            echo "✅ Frontend rebuilt with real Cognito configuration"
+            
+            # Get S3 bucket name from stack outputs
+            STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "carbonlens-ai-dev" --query 'Stacks[0].Outputs' --output json)
+            FRONTEND_BUCKET=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="FrontendBucketName") | .OutputValue')
+            CLOUDFRONT_DISTRIBUTION_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue')
+            
+            # Redeploy updated frontend
+            echo "📤 Redeploying updated frontend to S3..."
+            aws s3 sync build/ "s3://$FRONTEND_BUCKET" --delete
+            
+            # Invalidate CloudFront cache
+            if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ] && [ "$CLOUDFRONT_DISTRIBUTION_ID" != "null" ]; then
+              echo "🔄 Invalidating CloudFront cache..."
+              aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+            fi
+            
+            echo "🎉 Frontend updated with real Cognito configuration!"
+          else
+            echo "❌ Environment file .env.dev not found"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to update frontend configuration"
+          exit 1
+        fi
+
     - name: Run smoke tests
       run: |
         sleep 30
@@ -308,6 +352,50 @@ jobs:
       env:
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
+    - name: Update frontend config and rebuild
+      shell: bash
+      run: |
+        echo "🔧 Updating frontend configuration with real deployment values..."
+        
+        # Install env-cmd if not already installed
+        npm install env-cmd --save-dev
+        
+        # Update frontend configuration
+        chmod +x scripts/update-frontend-config.sh
+        if ./scripts/update-frontend-config.sh -e staging; then
+          echo "✅ Frontend configuration updated"
+          
+          # Rebuild frontend with real configuration
+          echo "🔨 Rebuilding frontend with updated configuration..."
+          if [ -f ".env.staging" ]; then
+            npm run build:staging
+            echo "✅ Frontend rebuilt with real Cognito configuration"
+            
+            # Get S3 bucket name from stack outputs
+            STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "carbonlens-ai-staging" --query 'Stacks[0].Outputs' --output json)
+            FRONTEND_BUCKET=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="FrontendBucketName") | .OutputValue')
+            CLOUDFRONT_DISTRIBUTION_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue')
+            
+            # Redeploy updated frontend
+            echo "📤 Redeploying updated frontend to S3..."
+            aws s3 sync build/ "s3://$FRONTEND_BUCKET" --delete
+            
+            # Invalidate CloudFront cache
+            if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ] && [ "$CLOUDFRONT_DISTRIBUTION_ID" != "null" ]; then
+              echo "🔄 Invalidating CloudFront cache..."
+              aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+            fi
+            
+            echo "🎉 Frontend updated with real Cognito configuration!"
+          else
+            echo "❌ Environment file .env.staging not found"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to update frontend configuration"
+          exit 1
+        fi
+
     - name: Run integration tests
       run: |
         sleep 30
@@ -354,13 +442,104 @@ jobs:
         name: frontend-build
         path: build/
 
+    - name: Check for existing certificate (prod)
+      id: check-cert-prod
+      run: |
+        if [ -n "${{ secrets.PROD_DOMAIN_NAME }}" ]; then
+          EXISTING_CERT=$(aws acm list-certificates \
+            --query "CertificateSummaryList[?DomainName=='${{ secrets.PROD_DOMAIN_NAME }}'].CertificateArn" \
+            --output text --region us-east-1)
+          
+          if [ -n "$EXISTING_CERT" ] && [ "$EXISTING_CERT" != "None" ]; then
+            echo "certificate_arn=$EXISTING_CERT" >> $GITHUB_OUTPUT
+            echo "✅ Found existing certificate: $EXISTING_CERT"
+          else
+            echo "❌ No existing certificate found"
+            
+            # Auto-create certificate if hosted zone is provided
+            if [ -n "${{ secrets.HOSTED_ZONE_ID }}" ]; then
+              echo "🔐 Creating SSL certificate automatically..."
+              chmod +x scripts/setup-certificate.sh
+              
+              # Run certificate setup script
+              CERT_OUTPUT=$(./scripts/setup-certificate.sh -d "${{ secrets.PROD_DOMAIN_NAME }}" -z "${{ secrets.HOSTED_ZONE_ID }}")
+              
+              # Extract certificate ARN from output
+              NEW_CERT_ARN=$(echo "$CERT_OUTPUT" | grep "CERTIFICATE_ARN=" | cut -d'=' -f2)
+              
+              if [ -n "$NEW_CERT_ARN" ]; then
+                echo "certificate_arn=$NEW_CERT_ARN" >> $GITHUB_OUTPUT
+                echo "✅ Certificate created successfully: $NEW_CERT_ARN"
+              else
+                echo "❌ Failed to create certificate"
+              fi
+            fi
+          fi
+        fi
+
     - name: Deploy with bash script
       shell: bash
       run: |
         chmod +x scripts/deploy.sh
-        ./scripts/deploy.sh -e prod -d "${{ secrets.PROD_DOMAIN_NAME }}" -c "${{ secrets.PROD_CERTIFICATE_ARN }}" -z "${{ secrets.HOSTED_ZONE_ID }}" --skip-backend
+        
+        CERTIFICATE_ARN="${{ steps.check-cert-prod.outputs.certificate_arn }}"
+        
+        if [ -n "${{ secrets.PROD_DOMAIN_NAME }}" ] && [ -n "$CERTIFICATE_ARN" ]; then
+          echo "🚀 Deploying with existing certificate"
+          ./scripts/deploy.sh -e prod -d "${{ secrets.PROD_DOMAIN_NAME }}" -c "$CERTIFICATE_ARN" -z "${{ secrets.HOSTED_ZONE_ID }}" --skip-backend
+        elif [ -n "${{ secrets.PROD_DOMAIN_NAME }}" ]; then
+          echo "🚀 Deploying with CDK auto-certificate creation"
+          ./scripts/deploy.sh -e prod -d "${{ secrets.PROD_DOMAIN_NAME }}" -z "${{ secrets.HOSTED_ZONE_ID }}" --skip-backend
+        else
+          echo "🚀 Deploying without custom domain"
+          ./scripts/deploy.sh -e prod --skip-backend
+        fi
       env:
         AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+
+    - name: Update frontend config and rebuild
+      shell: bash
+      run: |
+        echo "🔧 Updating frontend configuration with real deployment values..."
+        
+        # Install env-cmd if not already installed
+        npm install env-cmd --save-dev
+        
+        # Update frontend configuration
+        chmod +x scripts/update-frontend-config.sh
+        if ./scripts/update-frontend-config.sh -e prod; then
+          echo "✅ Frontend configuration updated"
+          
+          # Rebuild frontend with real configuration
+          echo "🔨 Rebuilding frontend with updated configuration..."
+          if [ -f ".env.prod" ]; then
+            npm run build:prod
+            echo "✅ Frontend rebuilt with real Cognito configuration"
+            
+            # Get S3 bucket name from stack outputs
+            STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "carbonlens-ai-prod" --query 'Stacks[0].Outputs' --output json)
+            FRONTEND_BUCKET=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="FrontendBucketName") | .OutputValue')
+            CLOUDFRONT_DISTRIBUTION_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue')
+            
+            # Redeploy updated frontend
+            echo "📤 Redeploying updated frontend to S3..."
+            aws s3 sync build/ "s3://$FRONTEND_BUCKET" --delete
+            
+            # Invalidate CloudFront cache
+            if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ] && [ "$CLOUDFRONT_DISTRIBUTION_ID" != "null" ]; then
+              echo "🔄 Invalidating CloudFront cache..."
+              aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+            fi
+            
+            echo "🎉 Frontend updated with real Cognito configuration!"
+          else
+            echo "❌ Environment file .env.prod not found"
+            exit 1
+          fi
+        else
+          echo "❌ Failed to update frontend configuration"
+          exit 1
+        fi
 
     - name: Run production smoke tests
       run: |
@@ -445,6 +624,29 @@ jobs:
     - name: Generate build summary
       run: |
         chmod +x scripts/send-build-summary.sh
+        chmod +x scripts/environment-config.sh
+        
+        # Source environment configuration
+        source scripts/environment-config.sh
+        
+        # Function to check if custom domain is configured for environment
+        is_custom_domain_configured() {
+          local env=$1
+          case $env in
+            "dev")
+              [ -n "${{ secrets.DEV_DOMAIN_NAME }}" ]
+              ;;
+            "staging")
+              [ -n "${{ secrets.STAGING_DOMAIN_NAME }}" ]
+              ;;
+            "prod")
+              [ -n "${{ secrets.PROD_DOMAIN_NAME }}" ]
+              ;;
+            *)
+              false
+              ;;
+          esac
+        }
         
         # Determine which environment was deployed
         DEPLOYED_ENV=""
@@ -452,26 +654,49 @@ jobs:
         
         if [ "${{ needs.deploy-dev.result }}" == "success" ]; then
           DEPLOYED_ENV="dev"
-          DEPLOYED_URL="${{ secrets.DEV_DOMAIN_NAME }}"
-          if [ -z "$DEPLOYED_URL" ]; then
-            # Get CloudFront domain as fallback
-            DEPLOYED_URL=$(aws cloudformation describe-stacks --stack-name "carbonlens-ai-dev" --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDomainName`].OutputValue' --output text 2>/dev/null || echo "")
-            if [ -n "$DEPLOYED_URL" ]; then
-              DEPLOYED_URL="https://$DEPLOYED_URL"
-            fi
-          else
-            DEPLOYED_URL="https://$DEPLOYED_URL"
-          fi
         elif [ "${{ needs.deploy-staging.result }}" == "success" ]; then
           DEPLOYED_ENV="staging"
-          DEPLOYED_URL="https://${{ secrets.STAGING_DOMAIN_NAME }}"
         elif [ "${{ needs.deploy-prod.result }}" == "success" ]; then
           DEPLOYED_ENV="prod"
-          DEPLOYED_URL="https://${{ secrets.PROD_DOMAIN_NAME }}"
         fi
         
+        # Generate URL based on environment using shared functions
         if [ -n "$DEPLOYED_ENV" ]; then
-          ./scripts/send-build-summary.sh -e "$DEPLOYED_ENV" -s "success" -u "$DEPLOYED_URL"
+          echo "📧 Determining URL for $DEPLOYED_ENV environment..."
+          
+          # Check if custom domain is configured and get URL
+          CUSTOM_DOMAIN_CONFIGURED="false"
+          if is_custom_domain_configured "$DEPLOYED_ENV"; then
+            CUSTOM_DOMAIN_CONFIGURED="true"
+          fi
+          
+          # Use shared function to get the best URL
+          DEPLOYED_URL=$(get_environment_url "$DEPLOYED_ENV" "$CUSTOM_DOMAIN_CONFIGURED")
+          
+          if [ -n "$DEPLOYED_URL" ]; then
+            if [ "$CUSTOM_DOMAIN_CONFIGURED" = "true" ]; then
+              echo "🌐 Using custom domain: $DEPLOYED_URL"
+            else
+              echo "☁️ Using CloudFront domain: $DEPLOYED_URL"
+            fi
+            
+            echo "📧 Generating build summary for $DEPLOYED_ENV environment"
+            echo "🌐 Final Application URL: $DEPLOYED_URL"
+            
+            # Set email recipient if configured
+            export DEPLOYMENT_EMAIL="${{ secrets.DEPLOYMENT_EMAIL || secrets.NOTIFICATION_EMAIL }}"
+            
+            ./scripts/send-build-summary.sh -e "$DEPLOYED_ENV" -s "success" -u "$DEPLOYED_URL"
+          else
+            echo "⚠️ Could not determine deployment URL for build summary"
+            
+            # Set email recipient if configured
+            export DEPLOYMENT_EMAIL="${{ secrets.DEPLOYMENT_EMAIL || secrets.NOTIFICATION_EMAIL }}"
+            
+            ./scripts/send-build-summary.sh -e "$DEPLOYED_ENV" -s "success"
+          fi
+        else
+          echo "⚠️ No successful deployment detected"
         fi
       continue-on-error: true
 
@@ -479,6 +704,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: build-summary
-        path: build-summary-*.json
+        path: |
+          build-summary-*.json
+          deployment-email-*.html
         retention-days: 30
       if: always()

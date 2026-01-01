@@ -12,6 +12,10 @@
 
 set -e  # Exit on error
 
+# Source environment configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/environment-config.sh"
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -79,39 +83,32 @@ if [ -z "$ENVIRONMENT" ]; then
     exit 1
 fi
 
-# Validate environment
-if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
-    write_error "Invalid environment. Must be dev, staging, or prod"
+# Validate environment using shared function
+if ! validate_environment "$ENVIRONMENT"; then
     exit 1
 fi
 
 write_step "Updating frontend configuration for environment: $ENVIRONMENT"
 
-# Get stack outputs
-STACK_NAME="carbonlens-ai-$ENVIRONMENT"
+# Get stack outputs using shared functions
+STACK_NAME=$(generate_stack_name "$ENVIRONMENT")
 write_step "Getting stack outputs from: $STACK_NAME"
 
-if STACK_OUTPUTS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output json 2>/dev/null); then
-    if [ "$STACK_OUTPUTS" != "null" ] && [ -n "$STACK_OUTPUTS" ]; then
-        # Extract values using jq
-        USER_POOL_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="UserPoolId") | .OutputValue')
-        USER_POOL_CLIENT_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="UserPoolClientId") | .OutputValue')
-        API_URL=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="ApiGatewayUrl") | .OutputValue')
-        CLOUDFRONT_DOMAIN=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDomainName") | .OutputValue')
-        DISTRIBUTION_ID=$(echo "$STACK_OUTPUTS" | jq -r '.[] | select(.OutputKey=="CloudFrontDistributionId") | .OutputValue')
-        
-        write_success "Retrieved stack outputs:"
-        echo "  User Pool ID: $USER_POOL_ID"
-        echo "  User Pool Client ID: $USER_POOL_CLIENT_ID"
-        echo "  API Gateway URL: $API_URL"
-        echo "  CloudFront Domain: $CLOUDFRONT_DOMAIN"
-        echo "  Distribution ID: $DISTRIBUTION_ID"
-    else
-        write_error "Could not retrieve stack outputs for $STACK_NAME"
-        exit 1
-    fi
+USER_POOL_ID=$(get_user_pool_id "$ENVIRONMENT")
+USER_POOL_CLIENT_ID=$(get_user_pool_client_id "$ENVIRONMENT")
+API_URL=$(get_api_gateway_url "$ENVIRONMENT")
+CLOUDFRONT_DOMAIN=$(get_cloudfront_domain "$ENVIRONMENT")
+DISTRIBUTION_ID=$(get_cloudfront_distribution_id "$ENVIRONMENT")
+
+if [ -n "$USER_POOL_ID" ] && [ -n "$USER_POOL_CLIENT_ID" ] && [ -n "$API_URL" ]; then
+    write_success "Retrieved stack outputs:"
+    echo "  User Pool ID: $USER_POOL_ID"
+    echo "  User Pool Client ID: $USER_POOL_CLIENT_ID"
+    echo "  API Gateway URL: $API_URL"
+    echo "  CloudFront Domain: $CLOUDFRONT_DOMAIN"
+    echo "  Distribution ID: $DISTRIBUTION_ID"
 else
-    write_error "Failed to get stack outputs"
+    write_error "Could not retrieve required stack outputs for $STACK_NAME"
     exit 1
 fi
 
@@ -123,6 +120,14 @@ echo "  Real values will be provided via .env.$ENVIRONMENT file"
 write_step "Creating .env.$ENVIRONMENT file with deployment values"
 
 ENV_FILE=".env.$ENVIRONMENT"
+
+# Get feature flags using shared function
+FEATURE_FLAGS=$(get_feature_flags "$ENVIRONMENT")
+DEBUG_MODE=$(echo "$FEATURE_FLAGS" | grep "debug_mode:" | cut -d':' -f2)
+MOCK_DATA=$(echo "$FEATURE_FLAGS" | grep "mock_data:" | cut -d':' -f2)
+ANALYTICS=$(echo "$FEATURE_FLAGS" | grep "analytics:" | cut -d':' -f2)
+SHOW_ENV_BANNER=$(echo "$FEATURE_FLAGS" | grep "show_env_banner:" | cut -d':' -f2)
+
 cat > "$ENV_FILE" << EOF
 # CarbonLens AI - $ENVIRONMENT Environment Configuration
 # Generated on $(date '+%Y-%m-%d %H:%M:%S')
@@ -132,7 +137,7 @@ cat > "$ENV_FILE" << EOF
 REACT_APP_ENVIRONMENT=$ENVIRONMENT
 
 # AWS Configuration
-REACT_APP_AWS_REGION=us-east-1
+REACT_APP_AWS_REGION=$AWS_REGION
 
 # Cognito Authentication (from deployment)
 REACT_APP_USER_POOL_ID=$USER_POOL_ID
@@ -145,11 +150,11 @@ REACT_APP_API_URL=$API_URL
 REACT_APP_CLOUDFRONT_DOMAIN=$CLOUDFRONT_DOMAIN
 REACT_APP_DISTRIBUTION_ID=$DISTRIBUTION_ID
 
-# Feature Flags
-REACT_APP_DEBUG_MODE=$([ "$ENVIRONMENT" = "dev" ] && echo "true" || echo "false")
-REACT_APP_MOCK_DATA=$([ "$ENVIRONMENT" = "dev" ] && echo "true" || echo "false")
-REACT_APP_ANALYTICS=$([ "$ENVIRONMENT" != "dev" ] && echo "true" || echo "false")
-REACT_APP_SHOW_ENV_BANNER=$([ "$ENVIRONMENT" != "prod" ] && echo "true" || echo "false")
+# Feature Flags (environment-specific)
+REACT_APP_DEBUG_MODE=$DEBUG_MODE
+REACT_APP_MOCK_DATA=$MOCK_DATA
+REACT_APP_ANALYTICS=$ANALYTICS
+REACT_APP_SHOW_ENV_BANNER=$SHOW_ENV_BANNER
 EOF
 
 write_success "Created $ENV_FILE with real deployment values"
