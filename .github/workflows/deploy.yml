@@ -210,7 +210,10 @@ jobs:
     - name: Deploy backend
       run: |
         cd backend
-        npx serverless deploy --stage dev --region ${{ env.AWS_REGION }}
+        # Clear any existing serverless installation
+        npm uninstall -g serverless || true
+        # Use local serverless version
+        npx serverless deploy --stage dev --region ${{ env.AWS_REGION }} --verbose
 
     - name: Deploy frontend
       run: |
@@ -279,7 +282,7 @@ jobs:
     - name: Deploy backend
       run: |
         cd backend
-        npx serverless deploy --stage staging --region ${{ env.AWS_REGION }}
+        npx serverless deploy --stage staging --region ${{ env.AWS_REGION }} --verbose
 
     - name: Deploy frontend
       run: |
@@ -345,7 +348,7 @@ jobs:
     - name: Deploy backend
       run: |
         cd backend
-        npx serverless deploy --stage prod --region ${{ env.AWS_REGION }}
+        npx serverless deploy --stage prod --region ${{ env.AWS_REGION }} --verbose
 
     - name: Deploy frontend
       run: |

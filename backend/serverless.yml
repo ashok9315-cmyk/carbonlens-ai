@@ -1,6 +1,6 @@
 service: carbonlensaibackend
 
-frameworkVersion: '4'
+frameworkVersion: '3'
 
 provider:
   name: aws
