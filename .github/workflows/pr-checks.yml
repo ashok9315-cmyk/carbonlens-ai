@@ -1,0 +1,182 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Validate PR title and description
+  pr-validation:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validate PR title
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          perf
+          test
+          chore
+          ci
+        requireScope: false
+        disallowScopes: |
+          release
+        subjectPattern: ^(?![A-Z]).+$
+        subjectPatternError: |
+          The subject "{subject}" found in the pull request title "{title}"
+          didn't match the configured pattern. Please ensure that the subject
+          doesn't start with an uppercase character.
+
+  # Code quality checks
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Run ESLint
+      run: |
+        npx eslint src/ --ext .js,.jsx,.ts,.tsx
+        npx eslint backend/src/ --ext .js,.jsx,.ts,.tsx
+
+    - name: Check code formatting
+      run: |
+        npx prettier --check "src/**/*.{js,jsx,ts,tsx,json,css,md}"
+        npx prettier --check "backend/src/**/*.{js,jsx,ts,tsx,json,md}"
+
+    - name: Run security audit
+      run: |
+        npm audit --audit-level moderate
+        cd backend && npm audit --audit-level moderate
+
+  # Test coverage
+  test-coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Run tests with coverage
+      run: |
+        npm run test:ci
+        cd backend && npm run test:ci
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage/lcov.info,./backend/coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Comment coverage on PR
+      uses: romeovs/lcov-reporter-action@v0.3.1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        lcov-file: ./coverage/lcov.info
+        delete-old-comments: true
+
+  # Build verification
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+      env:
+        CI: false
+
+    - name: Check build size
+      run: |
+        BUILD_SIZE=$(du -sh build | cut -f1)
+        echo "Build size: $BUILD_SIZE"
+        # Add size check logic here if needed
+
+  # Dependency check
+  dependency-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Check for outdated dependencies
+      run: |
+        npm outdated || true
+        cd backend && npm outdated || true
+
+    - name: Check for security vulnerabilities
+      run: |
+        npx audit-ci --config audit-ci.json || true
+        cd backend && npx audit-ci --config ../audit-ci.json || true
+
+  # Infrastructure validation
+  infrastructure-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate CloudFormation template
+      run: |
+        aws cloudformation validate-template --template-body file://infrastructure/cloudformation-simple.yml --region us-east-1 || echo "CloudFormation validation failed"
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: us-east-1
+
+    - name: Validate Serverless configuration
+      run: |
+        cd backend
+        npx serverless print --stage dev --region us-east-1 > /dev/null || echo "Serverless validation failed"

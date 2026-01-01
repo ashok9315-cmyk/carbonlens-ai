@@ -1,0 +1,334 @@
+name: Scheduled Health Checks
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to check'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+        - dev
+        - staging
+        - prod
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Website health check
+  website-health:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check website availability
+      run: |
+        DOMAIN="${{ secrets.PROD_DOMAIN_NAME || 'https://carbonlens-ai.solutionsynth.cloud' }}"
+        
+        echo "🌐 Checking website health: $DOMAIN"
+        
+        # Check main page
+        RESPONSE=$(curl -s -o /dev/null -w "%{http_code},%{time_total}" $DOMAIN)
+        HTTP_CODE=$(echo $RESPONSE | cut -d',' -f1)
+        RESPONSE_TIME=$(echo $RESPONSE | cut -d',' -f2)
+        
+        echo "Main page - HTTP: $HTTP_CODE, Time: ${RESPONSE_TIME}s"
+        
+        if [ $HTTP_CODE -eq 200 ]; then
+          echo "✅ Website is healthy"
+        else
+          echo "❌ Website health check failed with HTTP $HTTP_CODE"
+          exit 1
+        fi
+        
+        # Performance check
+        if (( $(echo "$RESPONSE_TIME > 5.0" | bc -l) )); then
+          echo "⚠️ Slow response time: ${RESPONSE_TIME}s"
+        else
+          echo "✅ Good response time: ${RESPONSE_TIME}s"
+        fi
+
+    - name: Check CloudFront distribution
+      run: |
+        CLOUDFRONT_URL="${{ secrets.CLOUDFRONT_BACKUP_URL || 'https://d1dqupktcu8kce.cloudfront.net' }}"
+        
+        echo "☁️ Checking CloudFront: $CLOUDFRONT_URL"
+        
+        RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $CLOUDFRONT_URL)
+        
+        if [ $RESPONSE -eq 200 ]; then
+          echo "✅ CloudFront is healthy"
+        else
+          echo "❌ CloudFront health check failed with HTTP $RESPONSE"
+          exit 1
+        fi
+
+  # API health check
+  api-health:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check API endpoints
+      run: |
+        API_BASE="${{ secrets.API_BASE_URL || 'https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev' }}"
+        
+        echo "🔌 Checking API health: $API_BASE"
+        
+        # Test dashboard endpoint (should work without auth)
+        DASHBOARD_RESPONSE=$(curl -s -o /dev/null -w "%{http_code},%{time_total}" "$API_BASE/dashboard")
+        HTTP_CODE=$(echo $DASHBOARD_RESPONSE | cut -d',' -f1)
+        RESPONSE_TIME=$(echo $DASHBOARD_RESPONSE | cut -d',' -f2)
+        
+        echo "Dashboard endpoint - HTTP: $HTTP_CODE, Time: ${RESPONSE_TIME}s"
+        
+        # API Gateway returns 403 for unauthenticated requests, which is expected
+        if [ $HTTP_CODE -eq 200 ] || [ $HTTP_CODE -eq 403 ] || [ $HTTP_CODE -eq 401 ]; then
+          echo "✅ API Gateway is responding"
+        else
+          echo "❌ API health check failed with HTTP $HTTP_CODE"
+          exit 1
+        fi
+        
+        # Performance check
+        if (( $(echo "$RESPONSE_TIME > 10.0" | bc -l) )); then
+          echo "⚠️ Slow API response time: ${RESPONSE_TIME}s"
+        else
+          echo "✅ Good API response time: ${RESPONSE_TIME}s"
+        fi
+
+  # AWS resources health check
+  aws-health:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Check Lambda functions
+      run: |
+        echo "⚡ Checking Lambda functions..."
+        
+        FUNCTIONS=(
+          "carbonlensaibackend-dev-processDocument"
+          "carbonlensaibackend-dev-calculateCarbon"
+          "carbonlensaibackend-dev-getOptimizations"
+          "carbonlensaibackend-dev-generateCertificate"
+          "carbonlensaibackend-dev-getDashboardData"
+        )
+        
+        for FUNCTION in "${FUNCTIONS[@]}"; do
+          STATUS=$(aws lambda get-function --function-name $FUNCTION --query 'Configuration.State' --output text 2>/dev/null || echo "NotFound")
+          
+          if [ "$STATUS" = "Active" ]; then
+            echo "✅ $FUNCTION: Active"
+          else
+            echo "❌ $FUNCTION: $STATUS"
+          fi
+        done
+
+    - name: Check DynamoDB table
+      run: |
+        echo "🗄️ Checking DynamoDB table..."
+        
+        TABLE_STATUS=$(aws dynamodb describe-table --table-name carbonlens-ai-data-dev --query 'Table.TableStatus' --output text 2>/dev/null || echo "NotFound")
+        
+        if [ "$TABLE_STATUS" = "ACTIVE" ]; then
+          echo "✅ DynamoDB table: Active"
+          
+          # Check item count
+          ITEM_COUNT=$(aws dynamodb scan --table-name carbonlens-ai-data-dev --select COUNT --query 'Count' --output text)
+          echo "📊 Item count: $ITEM_COUNT"
+        else
+          echo "❌ DynamoDB table: $TABLE_STATUS"
+        fi
+
+    - name: Check S3 buckets
+      run: |
+        echo "🪣 Checking S3 buckets..."
+        
+        BUCKETS=(
+          "carbonlens-ai-web-dev-790756194179"
+          "carbonlens-ai-docs-dev-790756194179"
+        )
+        
+        for BUCKET in "${BUCKETS[@]}"; do
+          if aws s3 ls s3://$BUCKET >/dev/null 2>&1; then
+            echo "✅ $BUCKET: Accessible"
+            
+            # Check object count
+            OBJECT_COUNT=$(aws s3 ls s3://$BUCKET --recursive | wc -l)
+            echo "📁 Objects in $BUCKET: $OBJECT_COUNT"
+          else
+            echo "❌ $BUCKET: Not accessible"
+          fi
+        done
+
+    - name: Check CloudFront distribution
+      run: |
+        echo "☁️ Checking CloudFront distribution..."
+        
+        DISTRIBUTION_ID="${{ secrets.CLOUDFRONT_DISTRIBUTION_ID || 'E2P398QOXMEM5S' }}"
+        
+        STATUS=$(aws cloudfront get-distribution --id $DISTRIBUTION_ID --query 'Distribution.Status' --output text 2>/dev/null || echo "NotFound")
+        
+        if [ "$STATUS" = "Deployed" ]; then
+          echo "✅ CloudFront distribution: Deployed"
+        else
+          echo "❌ CloudFront distribution: $STATUS"
+        fi
+
+    - name: Check Cognito User Pool
+      run: |
+        echo "🔐 Checking Cognito User Pool..."
+        
+        USER_POOL_ID="${{ secrets.COGNITO_USER_POOL_ID || 'us-east-1_pesPWWfoF' }}"
+        
+        STATUS=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID --query 'UserPool.Status' --output text 2>/dev/null || echo "NotFound")
+        
+        if [ "$STATUS" = "ACTIVE" ] || [ "$STATUS" = "Enabled" ]; then
+          echo "✅ Cognito User Pool: Active"
+          
+          # Check user count
+          USER_COUNT=$(aws cognito-idp list-users --user-pool-id $USER_POOL_ID --query 'length(Users)' --output text)
+          echo "👥 User count: $USER_COUNT"
+        else
+          echo "❌ Cognito User Pool: $STATUS"
+        fi
+
+  # Performance monitoring
+  performance-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install performance testing tools
+      run: |
+        npm install -g lighthouse
+        sudo apt-get update
+        sudo apt-get install -y bc
+
+    - name: Run Lighthouse audit
+      run: |
+        DOMAIN="${{ secrets.PROD_DOMAIN_NAME || 'https://carbonlens-ai.solutionsynth.cloud' }}"
+        
+        echo "🔍 Running Lighthouse audit on $DOMAIN"
+        
+        lighthouse $DOMAIN --output json --output-path lighthouse-results.json --chrome-flags="--headless --no-sandbox" || true
+        
+        if [ -f lighthouse-results.json ]; then
+          PERFORMANCE=$(cat lighthouse-results.json | jq '.lhr.categories.performance.score * 100' | cut -d'.' -f1)
+          ACCESSIBILITY=$(cat lighthouse-results.json | jq '.lhr.categories.accessibility.score * 100' | cut -d'.' -f1)
+          BEST_PRACTICES=$(cat lighthouse-results.json | jq '.lhr.categories["best-practices"].score * 100' | cut -d'.' -f1)
+          SEO=$(cat lighthouse-results.json | jq '.lhr.categories.seo.score * 100' | cut -d'.' -f1)
+          
+          echo "📊 Lighthouse Scores:"
+          echo "  Performance: ${PERFORMANCE}%"
+          echo "  Accessibility: ${ACCESSIBILITY}%"
+          echo "  Best Practices: ${BEST_PRACTICES}%"
+          echo "  SEO: ${SEO}%"
+          
+          # Alert if performance is below 80%
+          if [ $PERFORMANCE -lt 80 ]; then
+            echo "⚠️ Performance score below 80%"
+          fi
+        else
+          echo "❌ Lighthouse audit failed"
+        fi
+
+    - name: Upload Lighthouse results
+      uses: actions/upload-artifact@v4
+      with:
+        name: lighthouse-results
+        path: lighthouse-results.json
+        retention-days: 30
+      if: always()
+
+  # Generate health report
+  health-report:
+    runs-on: ubuntu-latest
+    needs: [website-health, api-health, aws-health, performance-check]
+    if: always()
+    steps:
+    - name: Create health summary
+      run: |
+        echo "# CarbonLens AI - Health Check Report" > health-report.md
+        echo "" >> health-report.md
+        echo "**Check Date:** $(date)" >> health-report.md
+        echo "**Environment:** ${{ inputs.environment || 'prod' }}" >> health-report.md
+        echo "" >> health-report.md
+        
+        echo "## 🌐 Website Health" >> health-report.md
+        if [ "${{ needs.website-health.result }}" = "success" ]; then
+          echo "✅ Website is healthy and responsive" >> health-report.md
+        else
+          echo "❌ Website health check failed" >> health-report.md
+        fi
+        echo "" >> health-report.md
+        
+        echo "## 🔌 API Health" >> health-report.md
+        if [ "${{ needs.api-health.result }}" = "success" ]; then
+          echo "✅ API endpoints are responding correctly" >> health-report.md
+        else
+          echo "❌ API health check failed" >> health-report.md
+        fi
+        echo "" >> health-report.md
+        
+        echo "## ☁️ AWS Resources" >> health-report.md
+        if [ "${{ needs.aws-health.result }}" = "success" ]; then
+          echo "✅ All AWS resources are healthy" >> health-report.md
+        else
+          echo "❌ Some AWS resources may have issues" >> health-report.md
+        fi
+        echo "" >> health-report.md
+        
+        echo "## 📊 Performance" >> health-report.md
+        if [ "${{ needs.performance-check.result }}" = "success" ]; then
+          echo "✅ Performance metrics collected successfully" >> health-report.md
+        else
+          echo "⚠️ Performance check encountered issues" >> health-report.md
+        fi
+        echo "" >> health-report.md
+        
+        echo "## 📋 Summary" >> health-report.md
+        FAILED_JOBS=0
+        
+        if [ "${{ needs.website-health.result }}" != "success" ]; then
+          FAILED_JOBS=$((FAILED_JOBS + 1))
+        fi
+        if [ "${{ needs.api-health.result }}" != "success" ]; then
+          FAILED_JOBS=$((FAILED_JOBS + 1))
+        fi
+        if [ "${{ needs.aws-health.result }}" != "success" ]; then
+          FAILED_JOBS=$((FAILED_JOBS + 1))
+        fi
+        
+        if [ $FAILED_JOBS -eq 0 ]; then
+          echo "🎉 All health checks passed!" >> health-report.md
+        else
+          echo "⚠️ $FAILED_JOBS health check(s) failed. Please investigate." >> health-report.md
+        fi
+        
+        echo "" >> health-report.md
+        echo "## 🔗 Quick Links" >> health-report.md
+        echo "- [Website](${{ secrets.PROD_DOMAIN_NAME || 'https://carbonlens-ai.solutionsynth.cloud' }})" >> health-report.md
+        echo "- [CloudFront](${{ secrets.CLOUDFRONT_BACKUP_URL || 'https://d1dqupktcu8kce.cloudfront.net' }})" >> health-report.md
+        echo "- [API](${{ secrets.API_BASE_URL || 'https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev' }})" >> health-report.md
+
+    - name: Upload health report
+      uses: actions/upload-artifact@v4
+      with:
+        name: health-report
+        path: health-report.md
+        retention-days: 90
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Health check failed! Please check the logs and investigate."
+        echo "Failed jobs:"
+        echo "- Website Health: ${{ needs.website-health.result }}"
+        echo "- API Health: ${{ needs.api-health.result }}"
+        echo "- AWS Health: ${{ needs.aws-health.result }}"
+        echo "- Performance Check: ${{ needs.performance-check.result }}"

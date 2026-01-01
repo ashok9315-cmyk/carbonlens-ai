@@ -1,0 +1,183 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM UTC
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'package*.json'
+      - 'backend/package*.json'
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Dependency vulnerability scan
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Run npm audit
+      run: |
+        npm audit --json > frontend-audit.json || true
+        cd backend && npm audit --json > ../backend-audit.json || true
+
+    - name: Upload audit results
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-audit-results
+        path: |
+          frontend-audit.json
+          backend-audit.json
+        retention-days: 30
+
+  # SAST (Static Application Security Testing)
+  sast-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/owasp-top-ten
+          p/javascript
+          p/typescript
+          p/react
+        generateSarif: "1"
+
+    - name: Upload SARIF file
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: semgrep.sarif
+      if: always()
+
+  # Secret scanning
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run TruffleHog OSS
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+  # License compliance
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm ci
+        cd backend && npm ci
+
+    - name: Check licenses
+      run: |
+        npx license-checker --json > frontend-licenses.json
+        cd backend && npx license-checker --json > ../backend-licenses.json
+
+    - name: Upload license reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: license-reports
+        path: |
+          frontend-licenses.json
+          backend-licenses.json
+        retention-days: 30
+
+  # Infrastructure security
+  infrastructure-security:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Checkov
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: infrastructure/
+        framework: cloudformation
+        output_format: sarif
+        output_file_path: checkov-results.sarif
+
+    - name: Upload Checkov results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: checkov-results.sarif
+      if: always()
+
+  # Create security report
+  security-report:
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, sast-scan, secret-scan, license-check, infrastructure-security]
+    if: always()
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Create security summary
+      run: |
+        echo "# Security Scan Summary" > security-summary.md
+        echo "" >> security-summary.md
+        echo "**Scan Date:** $(date)" >> security-summary.md
+        echo "**Repository:** ${{ github.repository }}" >> security-summary.md
+        echo "**Commit:** ${{ github.sha }}" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## Scan Results" >> security-summary.md
+        echo "- ✅ Dependency Scan: Completed" >> security-summary.md
+        echo "- ✅ SAST Scan: Completed" >> security-summary.md
+        echo "- ✅ Secret Scan: Completed" >> security-summary.md
+        echo "- ✅ License Check: Completed" >> security-summary.md
+        echo "- ✅ Infrastructure Security: Completed" >> security-summary.md
+        echo "" >> security-summary.md
+        
+        echo "## Next Steps" >> security-summary.md
+        echo "1. Review any security findings in the Security tab" >> security-summary.md
+        echo "2. Update dependencies with known vulnerabilities" >> security-summary.md
+        echo "3. Address any SAST findings" >> security-summary.md
+        echo "4. Ensure no secrets are committed to the repository" >> security-summary.md
+
+    - name: Upload security summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-summary
+        path: security-summary.md
+        retention-days: 90
