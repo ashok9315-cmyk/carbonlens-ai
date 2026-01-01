@@ -12,7 +12,6 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import * as path from 'path';
 
 export interface CarbonLensAIStackProps extends cdk.StackProps {
   environment: string;
@@ -39,7 +38,7 @@ export class CarbonLensAIStack extends cdk.Stack {
 
     // S3 Bucket for Frontend
     this.frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
-      bucketName: `${projectName}-web-${environment}-${this.account}`,
+      bucketName: `${projectName}-web-${environment}-${cdk.Aws.ACCOUNT_ID}`,
       websiteIndexDocument: 'index.html',
       websiteErrorDocument: 'index.html',
       publicReadAccess: false,
@@ -50,7 +49,7 @@ export class CarbonLensAIStack extends cdk.Stack {
 
     // S3 Bucket for Documents
     this.documentsBucket = new s3.Bucket(this, 'DocumentsBucket', {
-      bucketName: `${projectName}-docs-${environment}-${this.account}`,
+      bucketName: `${projectName}-docs-${environment}-${cdk.Aws.ACCOUNT_ID}`,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -71,7 +70,9 @@ export class CarbonLensAIStack extends cdk.Stack {
       sortKey: { name: 'type', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      pointInTimeRecovery: environment === 'prod',
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: environment === 'prod',
+      },
     });
 
     // Add GSI for user-based queries
@@ -118,7 +119,7 @@ export class CarbonLensAIStack extends cdk.Stack {
 
     // IAM Role for Lambda Functions
     const lambdaRole = new iam.Role(this, 'LambdaExecutionRole', {
-      roleName: `${projectName}-lambda-${environment}-${this.account}`,
+      roleName: `${projectName}-lambda-${environment}-${cdk.Aws.ACCOUNT_ID}`,
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
@@ -166,7 +167,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-processDocument-${environment}`,
       handler: 'src/handlers/documentProcessor.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Process documents and extract carbon footprint data',
     });
 
@@ -174,7 +175,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-calculateCarbon-${environment}`,
       handler: 'src/handlers/carbonCalculator.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Calculate carbon footprint from logistics data',
     });
 
@@ -182,7 +183,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-getOptimizations-${environment}`,
       handler: 'src/handlers/optimizationEngine.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Generate AI-powered optimization recommendations',
     });
 
@@ -190,7 +191,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-generateCertificate-${environment}`,
       handler: 'src/handlers/certificateGenerator.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Generate carbon certificates with QR codes',
     });
 
@@ -198,7 +199,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-getDashboardData-${environment}`,
       handler: 'src/handlers/dashboardData.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Retrieve dashboard analytics data',
     });
 
@@ -206,7 +207,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-seedTestData-${environment}`,
       handler: 'src/handlers/seedTestData.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Seed database with test data',
     });
 
@@ -214,7 +215,7 @@ export class CarbonLensAIStack extends cdk.Stack {
       ...lambdaProps,
       functionName: `${projectName}-migrateUserData-${environment}`,
       handler: 'src/handlers/migrateUserData.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      code: lambda.Code.fromAsset('../../backend'),
       description: 'Migrate user data between versions',
     });
 
@@ -275,10 +276,36 @@ export class CarbonLensAIStack extends cdk.Stack {
       },
     });
 
+    // SSL Certificate (create if not provided)
+    let certificate: acm.ICertificate | undefined;
+    if (certificateArn) {
+      // Use existing certificate
+      certificate = acm.Certificate.fromCertificateArn(this, 'Certificate', certificateArn);
+    } else if (domainName && hostedZoneId) {
+      // Create new certificate with DNS validation
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
+        hostedZoneId,
+        zoneName: domainName.split('.').slice(-2).join('.'), // Get root domain (solutionsynth.cloud)
+      });
+
+      certificate = new acm.Certificate(this, 'Certificate', {
+        domainName: domainName,
+        validation: acm.CertificateValidation.fromDns(hostedZone),
+        certificateName: `${projectName}-${environment}-certificate`,
+      });
+
+      // Output the certificate ARN for future reference
+      new cdk.CfnOutput(this, 'CertificateArn', {
+        value: certificate.certificateArn,
+        description: 'SSL Certificate ARN',
+        exportName: `${id}-CertificateArn`,
+      });
+    }
+
     // CloudFront Distribution Configuration
-    const distributionConfig: cloudfront.DistributionProps = {
+    const baseDistributionConfig = {
       defaultBehavior: {
-        origin: new origins.S3Origin(this.frontendBucket, {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(this.frontendBucket, {
           originAccessControlId: originAccessControl.attrId,
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -294,6 +321,8 @@ export class CarbonLensAIStack extends cdk.Stack {
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+          // Add path rewriting to remove /api prefix
+          functionAssociations: [],
         },
       },
       defaultRootObject: 'index.html',
@@ -312,12 +341,14 @@ export class CarbonLensAIStack extends cdk.Stack {
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
     };
 
-    // Add custom domain if provided
-    if (domainName && certificateArn) {
-      const certificate = acm.Certificate.fromCertificateArn(this, 'Certificate', certificateArn);
-      distributionConfig.domainNames = [domainName];
-      distributionConfig.certificate = certificate;
-    }
+    // Build final distribution configuration with optional domain
+    const distributionConfig: cloudfront.DistributionProps = domainName && certificate
+      ? {
+          ...baseDistributionConfig,
+          domainNames: [domainName],
+          certificate: certificate,
+        }
+      : baseDistributionConfig;
 
     // Create CloudFront Distribution
     this.distribution = new cloudfront.Distribution(this, 'Distribution', distributionConfig);
@@ -330,7 +361,7 @@ export class CarbonLensAIStack extends cdk.Stack {
         principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
         conditions: {
           StringEquals: {
-            'AWS:SourceArn': `arn:aws:cloudfront::${this.account}:distribution/${this.distribution.distributionId}`,
+            'AWS:SourceArn': `arn:aws:cloudfront::${cdk.Aws.ACCOUNT_ID}:distribution/${this.distribution.distributionId}`,
           },
         },
       })
@@ -338,15 +369,29 @@ export class CarbonLensAIStack extends cdk.Stack {
 
     // Route 53 DNS Record (if domain and hosted zone provided)
     if (domainName && hostedZoneId) {
-      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
+      const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZoneForDNS', {
         hostedZoneId,
-        zoneName: domainName.split('.').slice(-2).join('.'), // Get root domain
+        zoneName: domainName.split('.').slice(-2).join('.'), // Get root domain (solutionsynth.cloud)
       });
 
       new route53.ARecord(this, 'AliasRecord', {
         zone: hostedZone,
         recordName: domainName,
         target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)),
+        comment: `CloudFront alias for ${domainName} (${environment} environment)`,
+      });
+    } else if (domainName) {
+      // If domain is provided but no hosted zone ID, try to find the hosted zone
+      const rootDomain = domainName.split('.').slice(-2).join('.');
+      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZoneForDNS', {
+        domainName: rootDomain,
+      });
+
+      new route53.ARecord(this, 'AliasRecord', {
+        zone: hostedZone,
+        recordName: domainName,
+        target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)),
+        comment: `CloudFront alias for ${domainName} (${environment} environment)`,
       });
     }
 
