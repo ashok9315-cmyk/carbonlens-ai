@@ -71,30 +71,78 @@ jobs:
     steps:
     - name: Check API endpoints
       run: |
-        API_BASE="${{ secrets.API_BASE_URL || 'https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev' }}"
+        # Get environment from input or default to prod
+        ENV="${{ inputs.environment || 'prod' }}"
         
-        echo "🔌 Checking API health: $API_BASE"
-        
-        # Test dashboard endpoint (should work without auth)
-        DASHBOARD_RESPONSE=$(curl -s -o /dev/null -w "%{http_code},%{time_total}" "$API_BASE/dashboard")
-        HTTP_CODE=$(echo $DASHBOARD_RESPONSE | cut -d',' -f1)
-        RESPONSE_TIME=$(echo $DASHBOARD_RESPONSE | cut -d',' -f2)
-        
-        echo "Dashboard endpoint - HTTP: $HTTP_CODE, Time: ${RESPONSE_TIME}s"
-        
-        # API Gateway returns 403 for unauthenticated requests, which is expected
-        if [ $HTTP_CODE -eq 200 ] || [ $HTTP_CODE -eq 403 ] || [ $HTTP_CODE -eq 401 ]; then
-          echo "✅ API Gateway is responding"
+        if [ "$ENV" = "prod" ]; then
+          API_BASE="${{ secrets.PROD_API_URL || 'https://t95vjsi3kc.execute-api.us-east-1.amazonaws.com/prod' }}"
+        elif [ "$ENV" = "staging" ]; then
+          API_BASE="${{ secrets.STAGING_API_URL || 'https://api-staging.solutionsynth.cloud' }}"
         else
-          echo "❌ API health check failed with HTTP $HTTP_CODE"
-          exit 1
+          API_BASE="${{ secrets.DEV_API_URL || 'https://zleuzxeorc.execute-api.us-east-1.amazonaws.com/dev' }}"
         fi
         
-        # Performance check
-        if (( $(echo "$RESPONSE_TIME > 10.0" | bc -l) )); then
-          echo "⚠️ Slow API response time: ${RESPONSE_TIME}s"
+        echo "🔌 Checking API health: $API_BASE"
+        echo "Environment: $ENV"
+        
+        # Test all API endpoints
+        ENDPOINTS=(
+          "dashboard:GET"
+          "optimizations:GET"
+          "process-document:POST"
+          "calculate-carbon:POST"
+          "certificate:POST"
+          "seed-test-data:POST"
+          "migrate-user-data:POST"
+        )
+        
+        FAILED_ENDPOINTS=0
+        
+        for ENDPOINT_INFO in "${ENDPOINTS[@]}"; do
+          ENDPOINT=$(echo $ENDPOINT_INFO | cut -d':' -f1)
+          METHOD=$(echo $ENDPOINT_INFO | cut -d':' -f2)
+          
+          echo "Testing $METHOD $API_BASE/$ENDPOINT"
+          
+          if [ "$METHOD" = "GET" ]; then
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code},%{time_total}" "$API_BASE/$ENDPOINT" --max-time 10)
+          else
+            # POST with minimal test payload
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code},%{time_total}" \
+              -X POST "$API_BASE/$ENDPOINT" \
+              -H "Content-Type: application/json" \
+              -d '{"test": true}' \
+              --max-time 10)
+          fi
+          
+          HTTP_CODE=$(echo $RESPONSE | cut -d',' -f1)
+          RESPONSE_TIME=$(echo $RESPONSE | cut -d',' -f2)
+          
+          # API Gateway returns various codes for unauthenticated requests
+          # 200: Success, 400: Bad Request (expected for test data), 401/403: Auth required (expected)
+          if [[ "$HTTP_CODE" =~ ^(200|400|401|403)$ ]]; then
+            echo "  ✅ $ENDPOINT: HTTP $HTTP_CODE, Time: ${RESPONSE_TIME}s"
+            
+            # Performance check
+            if (( $(echo "$RESPONSE_TIME > 10.0" | bc -l) )); then
+              echo "  ⚠️ Slow response time: ${RESPONSE_TIME}s"
+            fi
+          else
+            echo "  ❌ $ENDPOINT: HTTP $HTTP_CODE, Time: ${RESPONSE_TIME}s"
+            FAILED_ENDPOINTS=$((FAILED_ENDPOINTS + 1))
+          fi
+        done
+        
+        echo ""
+        echo "📋 API Endpoints Summary:"
+        echo "  Total Endpoints: ${#ENDPOINTS[@]}"
+        echo "  Failed Endpoints: $FAILED_ENDPOINTS"
+        
+        if [ $FAILED_ENDPOINTS -gt 0 ]; then
+          echo "❌ Some API endpoints are not responding correctly"
+          exit 1
         else
-          echo "✅ Good API response time: ${RESPONSE_TIME}s"
+          echo "✅ All API endpoints are responding correctly"
         fi
 
   # AWS resources health check
@@ -112,60 +160,194 @@ jobs:
       run: |
         echo "⚡ Checking Lambda functions..."
         
+        # Get environment from input or default to prod
+        ENV="${{ inputs.environment || 'prod' }}"
+        
+        # All 7 Lambda functions in production
         FUNCTIONS=(
-          "carbonlensaibackend-dev-processDocument"
-          "carbonlensaibackend-dev-calculateCarbon"
-          "carbonlensaibackend-dev-getOptimizations"
-          "carbonlensaibackend-dev-generateCertificate"
-          "carbonlensaibackend-dev-getDashboardData"
+          "carbonlens-ai-processDocument-${ENV}"
+          "carbonlens-ai-calculateCarbon-${ENV}"
+          "carbonlens-ai-getOptimizations-${ENV}"
+          "carbonlens-ai-generateCertificate-${ENV}"
+          "carbonlens-ai-getDashboardData-${ENV}"
+          "carbonlens-ai-seedTestData-${ENV}"
+          "carbonlens-ai-migrateUserData-${ENV}"
         )
         
+        FAILED_FUNCTIONS=0
+        
         for FUNCTION in "${FUNCTIONS[@]}"; do
+          echo "Checking $FUNCTION..."
+          
+          # Check function status
           STATUS=$(aws lambda get-function --function-name $FUNCTION --query 'Configuration.State' --output text 2>/dev/null || echo "NotFound")
           
           if [ "$STATUS" = "Active" ]; then
             echo "✅ $FUNCTION: Active"
+            
+            # Get function metrics (invocations, errors, duration)
+            INVOCATIONS=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Invocations \
+              --dimensions Name=FunctionName,Value=$FUNCTION \
+              --statistics Sum \
+              --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+              --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+              --period 3600 \
+              --query 'Datapoints[0].Sum' --output text 2>/dev/null || echo "0")
+            
+            ERRORS=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Errors \
+              --dimensions Name=FunctionName,Value=$FUNCTION \
+              --statistics Sum \
+              --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+              --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+              --period 3600 \
+              --query 'Datapoints[0].Sum' --output text 2>/dev/null || echo "0")
+            
+            AVG_DURATION=$(aws cloudwatch get-metric-statistics \
+              --namespace AWS/Lambda \
+              --metric-name Duration \
+              --dimensions Name=FunctionName,Value=$FUNCTION \
+              --statistics Average \
+              --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+              --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+              --period 3600 \
+              --query 'Datapoints[0].Average' --output text 2>/dev/null || echo "0")
+            
+            echo "  📊 Invocations: ${INVOCATIONS}, Errors: ${ERRORS}, Avg Duration: ${AVG_DURATION}ms"
+            
+            # Check if error rate is concerning
+            if [ "$INVOCATIONS" != "0" ] && [ "$INVOCATIONS" != "None" ]; then
+              ERROR_RATE=$(echo "scale=2; $ERRORS * 100 / $INVOCATIONS" | bc -l 2>/dev/null || echo "0")
+              if (( $(echo "$ERROR_RATE > 5" | bc -l) )); then
+                echo "  ⚠️ High error rate: ${ERROR_RATE}%"
+              fi
+            fi
+            
           else
             echo "❌ $FUNCTION: $STATUS"
+            FAILED_FUNCTIONS=$((FAILED_FUNCTIONS + 1))
           fi
+          echo ""
         done
+        
+        echo "📋 Lambda Functions Summary:"
+        echo "  Total Functions: ${#FUNCTIONS[@]}"
+        echo "  Failed Functions: $FAILED_FUNCTIONS"
+        
+        if [ $FAILED_FUNCTIONS -gt 0 ]; then
+          echo "❌ Some Lambda functions are not healthy"
+          exit 1
+        else
+          echo "✅ All Lambda functions are healthy"
+        fi
 
     - name: Check DynamoDB table
       run: |
         echo "🗄️ Checking DynamoDB table..."
         
-        TABLE_STATUS=$(aws dynamodb describe-table --table-name carbonlens-ai-data-dev --query 'Table.TableStatus' --output text 2>/dev/null || echo "NotFound")
+        # Get environment from input or default to prod
+        ENV="${{ inputs.environment || 'prod' }}"
+        TABLE_NAME="carbonlens-ai-data-${ENV}"
+        
+        echo "Checking table: $TABLE_NAME"
+        
+        TABLE_STATUS=$(aws dynamodb describe-table --table-name $TABLE_NAME --query 'Table.TableStatus' --output text 2>/dev/null || echo "NotFound")
         
         if [ "$TABLE_STATUS" = "ACTIVE" ]; then
           echo "✅ DynamoDB table: Active"
           
           # Check item count
-          ITEM_COUNT=$(aws dynamodb scan --table-name carbonlens-ai-data-dev --select COUNT --query 'Count' --output text)
+          ITEM_COUNT=$(aws dynamodb scan --table-name $TABLE_NAME --select COUNT --query 'Count' --output text)
           echo "📊 Item count: $ITEM_COUNT"
+          
+          # Check table metrics
+          READ_CAPACITY=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/DynamoDB \
+            --metric-name ConsumedReadCapacityUnits \
+            --dimensions Name=TableName,Value=$TABLE_NAME \
+            --statistics Sum \
+            --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 3600 \
+            --query 'Datapoints[0].Sum' --output text 2>/dev/null || echo "0")
+          
+          WRITE_CAPACITY=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/DynamoDB \
+            --metric-name ConsumedWriteCapacityUnits \
+            --dimensions Name=TableName,Value=$TABLE_NAME \
+            --statistics Sum \
+            --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+            --period 3600 \
+            --query 'Datapoints[0].Sum' --output text 2>/dev/null || echo "0")
+          
+          echo "📈 Read Capacity Used (1h): $READ_CAPACITY"
+          echo "📈 Write Capacity Used (1h): $WRITE_CAPACITY"
+          
         else
           echo "❌ DynamoDB table: $TABLE_STATUS"
+          exit 1
         fi
 
     - name: Check S3 buckets
       run: |
         echo "🪣 Checking S3 buckets..."
         
+        # Get environment from input or default to prod
+        ENV="${{ inputs.environment || 'prod' }}"
+        AWS_ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID || '790756194179' }}"
+        
         BUCKETS=(
-          "carbonlens-ai-web-dev-790756194179"
-          "carbonlens-ai-docs-dev-790756194179"
+          "carbonlens-ai-web-${ENV}-${AWS_ACCOUNT_ID}"
+          "carbonlens-ai-docs-${ENV}-${AWS_ACCOUNT_ID}"
         )
         
+        FAILED_BUCKETS=0
+        
         for BUCKET in "${BUCKETS[@]}"; do
+          echo "Checking bucket: $BUCKET"
+          
           if aws s3 ls s3://$BUCKET >/dev/null 2>&1; then
             echo "✅ $BUCKET: Accessible"
             
             # Check object count
             OBJECT_COUNT=$(aws s3 ls s3://$BUCKET --recursive | wc -l)
-            echo "📁 Objects in $BUCKET: $OBJECT_COUNT"
+            echo "  📁 Objects: $OBJECT_COUNT"
+            
+            # Check bucket size
+            BUCKET_SIZE=$(aws s3 ls s3://$BUCKET --recursive --human-readable --summarize | grep "Total Size" | awk '{print $3, $4}' || echo "Unknown")
+            echo "  📏 Size: $BUCKET_SIZE"
+            
+            # Check if frontend bucket has required files
+            if [[ "$BUCKET" == *"web"* ]]; then
+              if aws s3 ls s3://$BUCKET/index.html >/dev/null 2>&1; then
+                echo "  ✅ index.html found"
+              else
+                echo "  ❌ index.html missing"
+                FAILED_BUCKETS=$((FAILED_BUCKETS + 1))
+              fi
+            fi
+            
           else
             echo "❌ $BUCKET: Not accessible"
+            FAILED_BUCKETS=$((FAILED_BUCKETS + 1))
           fi
+          echo ""
         done
+        
+        echo "📋 S3 Buckets Summary:"
+        echo "  Total Buckets: ${#BUCKETS[@]}"
+        echo "  Failed Buckets: $FAILED_BUCKETS"
+        
+        if [ $FAILED_BUCKETS -gt 0 ]; then
+          echo "❌ Some S3 buckets are not accessible"
+          exit 1
+        else
+          echo "✅ All S3 buckets are accessible"
+        fi
 
     - name: Check CloudFront distribution
       run: |

@@ -162,33 +162,63 @@ if (-not $SkipInfrastructure) {
             $cdkArgs += "hostedZoneId=$HostedZoneId"
         }
         
-        npx cdk @cdkArgs
+        $cdkDeployResult = npx cdk @cdkArgs 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "CDK deployment failed: $cdkDeployResult"
+            throw "CDK deployment failed"
+        }
         
         Write-Success "Infrastructure deployed successfully"
         
+        # Update frontend configuration with actual deployment values
+        Write-Step "Updating frontend configuration..."
+        try {
+            .\scripts\update-frontend-config.ps1 -Environment $Environment
+            Write-Success "Frontend configuration updated"
+        } catch {
+            Write-Warning "Could not update frontend configuration: $_"
+        }
+        
         # Get stack outputs
         Write-Step "Getting stack outputs..."
-        $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json 2>$null
-        
-        if ($stackOutputs) {
-            $stackOutputsObj = $stackOutputs | ConvertFrom-Json
+        try {
+            $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json 2>$null
             
-            # Extract important values
-            $frontendBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
-            $documentsBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DocumentsBucketName" }).OutputValue
-            $userPoolId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolId" }).OutputValue
-            $userPoolClientId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolClientId" }).OutputValue
-            $cloudFrontDistributionId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
-            $dynamoDBTableName = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
-            $cloudFrontDomain = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
-            
-            Write-Success "Frontend Bucket: $frontendBucket"
-            Write-Success "Documents Bucket: $documentsBucket"
-            Write-Success "User Pool ID: $userPoolId"
-            Write-Success "CloudFront Distribution ID: $cloudFrontDistributionId"
-            Write-Success "CloudFront Domain: $cloudFrontDomain"
-        } else {
-            Write-Warning "Could not retrieve stack outputs, using fallback values"
+            if ($stackOutputs -and $stackOutputs -ne "null") {
+                $stackOutputsObj = $stackOutputs | ConvertFrom-Json
+                
+                # Extract important values
+                $frontendBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
+                $documentsBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DocumentsBucketName" }).OutputValue
+                $userPoolId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolId" }).OutputValue
+                $userPoolClientId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "UserPoolClientId" }).OutputValue
+                $cloudFrontDistributionId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
+                $dynamoDBTableName = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
+                $cloudFrontDomain = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+                $apiUrl = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "ApiGatewayUrl" }).OutputValue
+                
+                Write-Success "Frontend Bucket: $frontendBucket"
+                Write-Success "Documents Bucket: $documentsBucket"
+                Write-Success "User Pool ID: $userPoolId"
+                Write-Success "CloudFront Distribution ID: $cloudFrontDistributionId"
+                Write-Success "CloudFront Domain: $cloudFrontDomain"
+                Write-Success "API Gateway URL: $apiUrl"
+                
+                # Update frontend configuration with actual values
+                Write-Step "Updating frontend configuration..."
+                try {
+                    .\scripts\update-frontend-config.ps1 -Environment $Environment
+                    Write-Success "Frontend configuration updated with deployment values"
+                } catch {
+                    Write-Warning "Could not update frontend configuration: $_"
+                }
+                
+            } else {
+                throw "Stack outputs are empty or null"
+            }
+        } catch {
+            Write-Warning "Could not retrieve stack outputs: $_"
+            Write-Warning "Using fallback values based on naming convention"
             $frontendBucket = "carbonlens-ai-web-$Environment-$AWS_ACCOUNT_ID"
             $documentsBucket = "carbonlens-ai-docs-$Environment-$AWS_ACCOUNT_ID"
             $dynamoDBTableName = "carbonlens-ai-data-$Environment"
@@ -209,22 +239,24 @@ if (-not $SkipInfrastructure) {
     try {
         $stackOutputs = aws cloudformation describe-stacks --stack-name "carbonlens-ai-$Environment" --query 'Stacks[0].Outputs' --output json 2>$null
         
-        if ($stackOutputs) {
+        if ($stackOutputs -and $stackOutputs -ne "null") {
             $stackOutputsObj = $stackOutputs | ConvertFrom-Json
             $frontendBucket = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "FrontendBucketName" }).OutputValue
             $cloudFrontDistributionId = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDistributionId" }).OutputValue
             $dynamoDBTableName = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "DynamoDBTableName" }).OutputValue
             $cloudFrontDomain = ($stackOutputsObj | Where-Object { $_.OutputKey -eq "CloudFrontDomainName" }).OutputValue
+            
+            Write-Success "Using existing stack outputs"
         } else {
-            Write-Warning "Could not retrieve stack outputs, using fallback values"
-            $frontendBucket = "carbonlens-ai-web-$Environment-$AWS_ACCOUNT_ID"
-            $dynamoDBTableName = "carbonlens-ai-data-$Environment"
-            $cloudFrontDistributionId = ""
-            $cloudFrontDomain = ""
+            throw "Stack outputs are empty or null"
         }
     } catch {
-        Write-Error "Failed to get existing stack outputs: $_"
-        exit 1
+        Write-Warning "Could not retrieve existing stack outputs: $_"
+        Write-Warning "Using fallback values based on naming convention"
+        $frontendBucket = "carbonlens-ai-web-$Environment-$AWS_ACCOUNT_ID"
+        $dynamoDBTableName = "carbonlens-ai-data-$Environment"
+        $cloudFrontDistributionId = ""
+        $cloudFrontDomain = ""
     }
 }
 

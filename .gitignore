@@ -1,11 +1,21 @@
 # Dependencies
 node_modules/
 backend/node_modules/
+infrastructure/cdk/node_modules/
 
 # Build outputs
 build/
 dist/
 *.tgz
+
+# CDK specific files
+infrastructure/cdk/cdk.out/
+infrastructure/cdk/cdk-*.out/
+infrastructure/cdk/*.js
+infrastructure/cdk/*.d.ts
+infrastructure/cdk/lib/*.js
+infrastructure/cdk/lib/*.d.ts
+infrastructure/cdk/cdk.context.json
 
 # Environment files
 .env
@@ -13,6 +23,11 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.dev
+.env.staging
+.env.prod
+.env.development
+.env.production
 
 # AWS
 .aws/
@@ -89,23 +104,18 @@ Thumbs.db
 # PowerShell execution logs
 *.log
 
-# Sensitive documentation files with AWS credentials and deployment details
-AWS_CREDENTIALS_GUIDE.md
-AWS_FREE_TIER_ANALYSIS.md
-AWS_ROUTE53_TRANSFER_GUIDE.md
-CREATE_FRESH_IAM_USER.md
-CUSTOM_DOMAIN_SETUP.md
-DEPLOYMENT_SUMMARY.md
-DOCUMENTATION_UPDATE_SUMMARY.md
-GODADDY_DNS_SETUP.md
-INFRASTRUCTURE_CLEANUP_SUMMARY.md
-MANUAL_DEPLOYMENT.md
-SCRIPTS_CLEANUP_SUMMARY.md
-SETUP_GUIDE.md
-SOURCE_CODE_MANAGEMENT_GUIDE.md
+# Documentation files - exclude all .md files except essential user guides
+*.md
+!README.md
+!QUICK_START.md
+!LICENSE.md
+!docs/USER_GUIDE.md
+!docs/API.md
+!docs/TESTING_GUIDE.md
+!docs/AUTHENTICATION_GUIDE.md
+!docs/DATA_STORAGE_ARCHITECTURE.md
+!.github/workflows/README.md
 
-# Keep these documentation files (no sensitive data)
-# README.md
-# QUICK_START.md
-# LICENSE
-# docs/
+# Specific sensitive files
+delete-dns-record.json
+scripts/list-documentation.ps1

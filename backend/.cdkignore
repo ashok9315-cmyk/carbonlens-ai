@@ -1,13 +1,43 @@
 # CDK ignore file for Lambda deployment
+
+# Dependencies (AWS SDK is provided by Lambda runtime)
 node_modules/aws-sdk
 node_modules/@aws-sdk/client-*
+
+# Test files
 coverage/
 *.test.js
 *.spec.js
 __tests__/
 jest.config.js
+setupTests.js
+
+# Environment and config files
 .env*
 .git/
 .gitignore
+.serverless/
+serverless.yml
+
+# Documentation
 README.md
 *.md
+
+# Build artifacts
+dist/
+build/
+.nyc_output/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

@@ -73,13 +73,29 @@ jobs:
       run: |
         k6 run --out json=api-performance-results.json tests/performance/api-load-test.js || true
       env:
-        API_BASE_URL: ${{ secrets.API_BASE_URL || 'https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev' }}
+        API_BASE_URL: ${{ secrets.API_BASE_URL || 'https://t95vjsi3kc.execute-api.us-east-1.amazonaws.com/prod' }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Test Lambda functions performance
+      shell: bash
+      run: |
+        chmod +x scripts/test-lambda-functions.sh
+        ./scripts/test-lambda-functions.sh -e ${{ inputs.environment || 'prod' }} -d
+      continue-on-error: true
 
     - name: Upload API performance results
       uses: actions/upload-artifact@v4
       with:
         name: api-performance-results
-        path: api-performance-results.json
+        path: |
+          api-performance-results.json
+          lambda-health-report-*.json
         retention-days: 30
 
   # Bundle size analysis

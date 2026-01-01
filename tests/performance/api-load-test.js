@@ -19,10 +19,38 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.API_BASE_URL || 'https://2fi7ahgujj.execute-api.us-east-1.amazonaws.com/dev';
+const BASE_URL = __ENV.API_BASE_URL || 'https://t95vjsi3kc.execute-api.us-east-1.amazonaws.com/prod';
+
+// Test data for different endpoints
+const testData = {
+  processDocument: {
+    documentType: 'invoice',
+    testData: true
+  },
+  calculateCarbon: {
+    transportMode: 'truck',
+    distance: 100,
+    weight: 1000,
+    testData: true
+  },
+  generateCertificate: {
+    calculationId: 'test-calculation-id',
+    testData: true
+  },
+  getOptimizations: {
+    calculationId: 'test-calculation-id',
+    testData: true
+  },
+  seedTestData: {
+    testData: true
+  },
+  migrateUserData: {
+    testData: true
+  }
+};
 
 export default function () {
-  // Test dashboard endpoint
+  // Test dashboard endpoint (GET)
   const dashboardResponse = http.get(`${BASE_URL}/dashboard`, {
     headers: {
       'Content-Type': 'application/json',
@@ -36,7 +64,7 @@ export default function () {
 
   errorRate.add(!dashboardCheck);
 
-  // Test optimizations endpoint
+  // Test optimizations endpoint (GET)
   const optimizationsResponse = http.get(`${BASE_URL}/optimizations`, {
     headers: {
       'Content-Type': 'application/json',
@@ -51,12 +79,8 @@ export default function () {
   errorRate.add(!optimizationsCheck);
 
   // Test process document endpoint (POST)
-  const processDocumentPayload = JSON.stringify({
-    documentType: 'invoice',
-    testData: true
-  });
-
-  const processDocumentResponse = http.post(`${BASE_URL}/process-document`, processDocumentPayload, {
+  const processDocumentResponse = http.post(`${BASE_URL}/process-document`, 
+    JSON.stringify(testData.processDocument), {
     headers: {
       'Content-Type': 'application/json',
     },
@@ -70,13 +94,8 @@ export default function () {
   errorRate.add(!processDocumentCheck);
 
   // Test calculate carbon endpoint (POST)
-  const calculateCarbonPayload = JSON.stringify({
-    transportMode: 'truck',
-    distance: 100,
-    weight: 1000
-  });
-
-  const calculateCarbonResponse = http.post(`${BASE_URL}/calculate-carbon`, calculateCarbonPayload, {
+  const calculateCarbonResponse = http.post(`${BASE_URL}/calculate-carbon`, 
+    JSON.stringify(testData.calculateCarbon), {
     headers: {
       'Content-Type': 'application/json',
     },
@@ -88,6 +107,55 @@ export default function () {
   });
 
   errorRate.add(!calculateCarbonCheck);
+
+  // Test generate certificate endpoint (POST)
+  const generateCertificateResponse = http.post(`${BASE_URL}/certificate`, 
+    JSON.stringify(testData.generateCertificate), {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  const generateCertificateCheck = check(generateCertificateResponse, {
+    'generate-certificate status is 200, 400, or 403': (r) => [200, 400, 403].includes(r.status),
+    'generate-certificate response time < 3s': (r) => r.timings.duration < 3000,
+  });
+
+  errorRate.add(!generateCertificateCheck);
+
+  // Test seed test data endpoint (POST) - less frequently
+  if (Math.random() < 0.1) { // Only 10% of the time
+    const seedTestDataResponse = http.post(`${BASE_URL}/seed-test-data`, 
+      JSON.stringify(testData.seedTestData), {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const seedTestDataCheck = check(seedTestDataResponse, {
+      'seed-test-data status is 200, 400, or 403': (r) => [200, 400, 403].includes(r.status),
+      'seed-test-data response time < 10s': (r) => r.timings.duration < 10000,
+    });
+
+    errorRate.add(!seedTestDataCheck);
+  }
+
+  // Test migrate user data endpoint (POST) - less frequently
+  if (Math.random() < 0.05) { // Only 5% of the time
+    const migrateUserDataResponse = http.post(`${BASE_URL}/migrate-user-data`, 
+      JSON.stringify(testData.migrateUserData), {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const migrateUserDataCheck = check(migrateUserDataResponse, {
+      'migrate-user-data status is 200, 400, or 403': (r) => [200, 400, 403].includes(r.status),
+      'migrate-user-data response time < 5s': (r) => r.timings.duration < 5000,
+    });
+
+    errorRate.add(!migrateUserDataCheck);
+  }
 
   // Sleep between requests
   sleep(1);
