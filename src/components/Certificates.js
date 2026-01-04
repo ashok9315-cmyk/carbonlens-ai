@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API, Auth } from 'aws-amplify';
 import QRCode from 'qrcode';
 import './Certificates.css';
 
 const Certificates = () => {
+  const navigate = useNavigate();
   const [certificates, setCertificates] = useState([]);
   const [selectedCertificate, setSelectedCertificate] = useState(null);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
@@ -226,6 +228,10 @@ const Certificates = () => {
     URL.revokeObjectURL(url);
   };
 
+  const showCertificate = (certificateId) => {
+    navigate(`/certificates/verify/${certificateId}`);
+  };
+
   return (
     <div className="certificates">
       <div className="certificates-header">
@@ -249,15 +255,15 @@ const Certificates = () => {
               className={`certificate-item ${selectedCertificate?.id === cert.id ? 'selected' : ''}`}
               onClick={() => setSelectedCertificate(cert)}
             >
-              <div className="cert-header">
+              <div className="certificates-item-header">
                 <h4>{cert.product.name}</h4>
-                <span className="cert-id">{cert.id}</span>
+                <span className="certificates-item-id">{cert.id}</span>
               </div>
-              <div className="cert-details">
+              <div className="certificates-item-details">
                 <span className="company">{cert.company.name}</span>
                 <span className="emissions">{cert.carbonFootprint.totalEmissions} {cert.carbonFootprint.unit}</span>
               </div>
-              <div className="cert-date">
+              <div className="certificates-item-date">
                 Issued: {new Date(cert.issuedAt).toLocaleDateString()}
               </div>
             </div>
@@ -267,26 +273,32 @@ const Certificates = () => {
         <div className="certificate-details">
           {selectedCertificate ? (
             <div className="certificate-viewer">
-              <div className="cert-actions">
+              <div className="certificates-actions">
                 <button 
                   className="download-btn"
                   onClick={() => downloadCertificate(selectedCertificate)}
                 >
-                  Download Certificate
+                  📥 Download JSON Certificate
+                </button>
+                <button 
+                  className="show-cert-btn"
+                  onClick={() => showCertificate(selectedCertificate.id)}
+                >
+                  📄 Show Certificate
                 </button>
               </div>
 
               <div className="certificate-document">
-                <div className="cert-title">
+                <div className="certificates-title">
                   <h2>Carbon Footprint Certificate</h2>
-                  <div className="cert-badges">
+                  <div className="certificates-badges">
                     <span className="badge verified">✓ Verified</span>
                     <span className="badge standard">{selectedCertificate.standard}</span>
                   </div>
                 </div>
 
-                <div className="cert-sections">
-                  <div className="cert-section">
+                <div className="certificates-sections">
+                  <div className="certificates-section">
                     <h3>Company Information</h3>
                     <div className="info-grid">
                       <div className="info-item">
@@ -304,7 +316,7 @@ const Certificates = () => {
                     </div>
                   </div>
 
-                  <div className="cert-section">
+                  <div className="certificates-section">
                     <h3>Product Information</h3>
                     <div className="info-grid">
                       <div className="info-item">
@@ -322,7 +334,7 @@ const Certificates = () => {
                     </div>
                   </div>
 
-                  <div className="cert-section">
+                  <div className="certificates-section">
                     <h3>Carbon Footprint</h3>
                     <div className="emissions-summary">
                       <div className="total-emissions">
@@ -340,7 +352,7 @@ const Certificates = () => {
                     </div>
                   </div>
 
-                  <div className="cert-section">
+                  <div className="certificates-section">
                     <h3>Supply Chain</h3>
                     <div className="info-grid">
                       <div className="info-item">
@@ -362,7 +374,7 @@ const Certificates = () => {
                     </div>
                   </div>
 
-                  <div className="cert-section">
+                  <div className="certificates-section">
                     <h3>Verification</h3>
                     <div className="verification-info">
                       <div className="qr-code">

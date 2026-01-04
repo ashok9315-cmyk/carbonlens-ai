@@ -52,11 +52,13 @@ const CertificateVerification = () => {
   if (loading) {
     return (
       <div className="certificate-verification">
-        <div className="verification-container">
-          <div className="verification-header">
+        <div className="certificate">
+          <div className="header">
             <h1>🔍 Verifying Certificate</h1>
             <div className="loading-spinner"></div>
-            <p>Please wait while we verify the certificate...</p>
+          </div>
+          <div className="content" style={{textAlign: 'center', padding: '40px'}}>
+            <p style={{fontSize: '1.2em', color: '#2c3e50'}}>Please wait while we verify the certificate...</p>
           </div>
         </div>
       </div>
@@ -66,13 +68,24 @@ const CertificateVerification = () => {
   if (error || verificationStatus === 'invalid') {
     return (
       <div className="certificate-verification">
-        <div className="verification-container">
-          <div className="verification-header error">
+        <div className="certificate">
+          <div className="header" style={{background: 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)'}}>
             <h1>❌ Certificate Invalid</h1>
-            <p>{error || 'This certificate could not be verified.'}</p>
-            <div className="verification-details">
-              <p><strong>Certificate ID:</strong> {certificateId}</p>
-              <p><strong>Status:</strong> Invalid or Not Found</p>
+            <div className="subtitle">{error || 'This certificate could not be verified.'}</div>
+          </div>
+          <div className="content">
+            <div className="section">
+              <h2 className="section-title">🔍 Verification Details</h2>
+              <div className="info-grid">
+                <div className="info-item">
+                  <div className="info-label">Certificate ID</div>
+                  <div className="info-value">{certificateId}</div>
+                </div>
+                <div className="info-item">
+                  <div className="info-label">Status</div>
+                  <div className="info-value">Invalid or Not Found</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -82,171 +95,158 @@ const CertificateVerification = () => {
 
   return (
     <div className="certificate-verification">
-      <div className="verification-container">
-        <div className="verification-header verified">
-          <h1>✅ Certificate Verified</h1>
-          <p>This carbon footprint certificate is authentic and valid.</p>
+      <button className="print-button" onClick={() => window.print()}>🖨️ Print Certificate</button>
+      
+      <div className="certificate">
+        <div className="header">
+          <h1>🌍 Carbon Footprint Certificate</h1>
+          <div className="subtitle">GHG Protocol Compliant</div>
         </div>
-
-        <div className="certificate-display">
-          <div className="certificate-card">
-            <div className="certificate-header">
-              <h2>Carbon Footprint Certificate</h2>
-              <div className="certificate-badge">
-                <span className="badge-text">GHG Protocol Compliant</span>
+        
+        <div className="content">
+          <div className="section">
+            <h2 className="section-title">🏢 Company Information</h2>
+            <div className="info-grid">
+              <div className="info-item">
+                <div className="info-label">Company Name</div>
+                <div className="info-value">{certificate.company.name}</div>
               </div>
-            </div>
-
-            <div className="certificate-content">
-              <div className="certificate-section">
-                <h3>🏢 Company Information</h3>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="label">Company:</span>
-                    <span className="value">{certificate.company.name}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Address:</span>
-                    <span className="value">{certificate.company.address}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Contact:</span>
-                    <span className="value">{certificate.company.contact}</span>
-                  </div>
-                </div>
+              <div className="info-item">
+                <div className="info-label">Address</div>
+                <div className="info-value">{certificate.company.address}</div>
               </div>
-
-              <div className="certificate-section">
-                <h3>📦 Product Information</h3>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="label">Product:</span>
-                    <span className="value">{certificate.product.name}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">SKU:</span>
-                    <span className="value">{certificate.product.sku}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Category:</span>
-                    <span className="value">{certificate.product.category}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="certificate-section">
-                <h3>🌱 Carbon Footprint</h3>
-                <div className="emissions-summary">
-                  <div className="total-emissions">
-                    <span className="emissions-value">
-                      {certificate.carbonFootprint.totalEmissions.toLocaleString()}
-                    </span>
-                    <span className="emissions-unit">{certificate.carbonFootprint.unit}</span>
-                  </div>
-                  
-                  <div className="emissions-breakdown">
-                    <div className="breakdown-item">
-                      <span>Transport:</span>
-                      <span>{certificate.carbonFootprint.breakdown.transport} kg CO₂e</span>
-                    </div>
-                    <div className="breakdown-item">
-                      <span>Manufacturing:</span>
-                      <span>{certificate.carbonFootprint.breakdown.manufacturing} kg CO₂e</span>
-                    </div>
-                    <div className="breakdown-item">
-                      <span>Warehousing:</span>
-                      <span>{certificate.carbonFootprint.breakdown.warehousing} kg CO₂e</span>
-                    </div>
-                    <div className="breakdown-item">
-                      <span>Last Mile:</span>
-                      <span>{certificate.carbonFootprint.breakdown.lastMile} kg CO₂e</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="certificate-section">
-                <h3>🚚 Supply Chain</h3>
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="label">Origin:</span>
-                    <span className="value">{certificate.supplyChain.origin}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Destination:</span>
-                    <span className="value">{certificate.supplyChain.destination}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Transport Mode:</span>
-                    <span className="value">{certificate.supplyChain.transportMode}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Distance:</span>
-                    <span className="value">{certificate.supplyChain.distance} km</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Weight:</span>
-                    <span className="value">{certificate.supplyChain.weight} kg</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="certificate-section">
-                <h3>🔐 Verification</h3>
-                <div className="verification-info">
-                  <div className="info-item">
-                    <span className="label">Method:</span>
-                    <span className="value">{certificate.verification.method}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Algorithm:</span>
-                    <span className="value">{certificate.verification.algorithm}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Hash:</span>
-                    <span className="value hash">{certificate.verification.hash}</span>
-                  </div>
-                  <div className="info-item">
-                    <span className="label">Signature:</span>
-                    <span className="value hash">{certificate.verification.signature}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="certificate-footer">
-                <div className="certificate-dates">
-                  <div className="date-item">
-                    <span className="label">Issued:</span>
-                    <span className="value">{formatDate(certificate.issuedAt)}</span>
-                  </div>
-                  <div className="date-item">
-                    <span className="label">Valid Until:</span>
-                    <span className="value">{formatDate(certificate.validUntil)}</span>
-                  </div>
-                </div>
-                
-                <div className="certificate-id">
-                  <span className="label">Certificate ID:</span>
-                  <span className="value">{certificateId}</span>
-                </div>
+              <div className="info-item">
+                <div className="info-label">Contact</div>
+                <div className="info-value">{certificate.company.contact}</div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="verification-actions">
-          <button 
-            className="btn-primary"
-            onClick={() => window.print()}
-          >
-            🖨️ Print Certificate
-          </button>
-          <button 
-            className="btn-secondary"
-            onClick={() => window.history.back()}
-          >
-            ← Back
-          </button>
+          
+          <div className="section">
+            <h2 className="section-title">📦 Product Information</h2>
+            <div className="info-grid">
+              <div className="info-item">
+                <div className="info-label">Product Name</div>
+                <div className="info-value">{certificate.product.name}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">SKU</div>
+                <div className="info-value">{certificate.product.sku}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Category</div>
+                <div className="info-value">{certificate.product.category}</div>
+              </div>
+            </div>
+          </div>
+
+          
+          <div className="section">
+            <h2 className="section-title">🌱 Carbon Footprint Analysis</h2>
+            <div className="emissions-highlight">
+              <div className="total">{certificate.carbonFootprint.totalEmissions.toLocaleString()} {certificate.carbonFootprint.unit}</div>
+              <div className="label">Total Emissions</div>
+            </div>
+            
+            <div className="breakdown">
+              <div className="breakdown-item">
+                <div className="icon">🚚</div>
+                <div className="value">{certificate.carbonFootprint.breakdown.transport}</div>
+                <div className="label">Transport<br />kg CO₂e</div>
+              </div>
+              <div className="breakdown-item">
+                <div className="icon">🏭</div>
+                <div className="value">{certificate.carbonFootprint.breakdown.manufacturing}</div>
+                <div className="label">Manufacturing<br />kg CO₂e</div>
+              </div>
+              <div className="breakdown-item">
+                <div className="icon">🏢</div>
+                <div className="value">{certificate.carbonFootprint.breakdown.warehousing}</div>
+                <div className="label">Warehousing<br />kg CO₂e</div>
+              </div>
+              <div className="breakdown-item">
+                <div className="icon">📍</div>
+                <div className="value">{certificate.carbonFootprint.breakdown.lastMile}</div>
+                <div className="label">Last Mile<br />kg CO₂e</div>
+              </div>
+            </div>
+          </div>
+
+          
+          <div className="section">
+            <h2 className="section-title">🚚 Supply Chain Details</h2>
+            <div className="info-grid">
+              <div className="info-item">
+                <div className="info-label">Origin</div>
+                <div className="info-value">{certificate.supplyChain.origin}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Destination</div>
+                <div className="info-value">{certificate.supplyChain.destination}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Transport Mode</div>
+                <div className="info-value">{certificate.supplyChain.transportMode}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Distance</div>
+                <div className="info-value">{certificate.supplyChain.distance} km</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Weight</div>
+                <div className="info-value">{certificate.supplyChain.weight} kg</div>
+              </div>
+            </div>
+          </div>
+
+          
+          <div className="section">
+            <h2 className="section-title">🔐 Verification Details</h2>
+            <div className="verification-box">
+              <div className="info-grid">
+                <div className="info-item">
+                  <div className="info-label">Verification Method</div>
+                  <div className="info-value">{certificate.verification.method}</div>
+                </div>
+                <div className="info-item">
+                  <div className="info-label">Algorithm</div>
+                  <div className="info-value">{certificate.verification.algorithm}</div>
+                </div>
+              </div>
+              
+              <div style={{marginTop: '15px'}}>
+                <div className="info-label">Hash</div>
+                <div className="hash-value">{certificate.verification.hash}</div>
+              </div>
+              
+              <div style={{marginTop: '10px'}}>
+                <div className="info-label">Signature</div>
+                <div className="hash-value">{certificate.verification.signature}</div>
+              </div>
+            </div>
+            
+            <div className="info-grid" style={{marginTop: '12px'}}>
+              <div className="info-item">
+                <div className="info-label">Issued Date</div>
+                <div className="info-value">{formatDate(certificate.issuedAt)}</div>
+              </div>
+              <div className="info-item">
+                <div className="info-label">Valid Until</div>
+                <div className="info-value">{formatDate(certificate.validUntil)}</div>
+              </div>
+            </div>
+            
+            <div className="certificate-id">
+              <strong>Certificate ID:</strong><br />
+              {certificateId}
+            </div>
+          </div>
+        </div>
+        
+        <div className="footer">
+          <p><strong>This certificate is GHG Protocol compliant and cryptographically verified.</strong></p>
+          <p style={{marginTop: '10px', fontSize: '0.9em'}}>© 2026 Carbon Footprint Certification Authority</p>
         </div>
       </div>
     </div>

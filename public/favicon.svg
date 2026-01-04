@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#grad)"/>
+  <!-- Magnifying glass lens (represents "Lens") -->
+  <circle cx="42" cy="42" r="22" fill="none" stroke="white" stroke-width="4" opacity="0.95"/>
+  <!-- Magnifying glass handle -->
+  <line x1="58" y1="58" x2="70" y2="70" stroke="white" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
+  <!-- CO2 molecule inside lens (represents Carbon) -->
+  <circle cx="42" cy="42" r="5" fill="white" opacity="0.9"/>
+  <circle cx="30" cy="42" r="3.5" fill="white" opacity="0.85"/>
+  <circle cx="54" cy="42" r="3.5" fill="white" opacity="0.85"/>
+  <!-- Small leaf accent (sustainability) -->
+  <path d="M75 25 Q80 22, 82 27 Q78 29, 75 27 Z" fill="white" opacity="0.8"/>
+</svg>

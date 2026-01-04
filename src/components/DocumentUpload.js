@@ -42,6 +42,10 @@ const DocumentUpload = () => {
     }
   };
 
+  const handleUploadAreaClick = () => {
+    document.getElementById('file-upload').click();
+  };
+
   const handleFiles = async (files) => {
     const fileArray = Array.from(files);
     
@@ -242,6 +246,7 @@ const DocumentUpload = () => {
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
+        onClick={handleUploadAreaClick}
       >
         <input
           type="file"
@@ -255,7 +260,7 @@ const DocumentUpload = () => {
         <div className="upload-content">
           <div className="upload-icon">📁</div>
           <h3>Drag & Drop Documents Here</h3>
-          <p>or <label htmlFor="file-upload" className="upload-link">browse files</label></p>
+          <p>or <span className="upload-link">browse files</span></p>
           <div className="upload-info">
             <p>Supported formats: PDF, PNG, JPG, JPEG</p>
             <p>Maximum file size: 10MB</p>

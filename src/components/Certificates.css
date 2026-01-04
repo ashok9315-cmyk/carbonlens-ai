@@ -1,30 +1,55 @@
 .certificates {
-  padding: 2rem;
-  max-width: 1400px;
+  padding: 0;
+  max-width: 100%;
   margin: 0 auto;
 }
 
 .certificates-header {
+  background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+  padding: 2.5rem 2rem;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 2rem;
+  border-radius: 0 0 24px 24px;
+  box-shadow: 0 4px 20px rgba(155, 89, 182, 0.2);
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 2rem;
+  align-items: center;
+}
+
+.certificates-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, transparent 60%);
+  border-radius: 50%;
+  transform: translate(40%, -40%);
 }
 
 .certificates-header div {
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .certificates-header h1 {
-  font-size: 2.5rem;
-  color: #2c3e50;
-  margin: 0 0 0.5rem 0;
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+  letter-spacing: -0.5px;
+  color: white;
 }
 
 .certificates-header p {
-  font-size: 1.1rem;
-  color: #7f8c8d;
+  font-size: 1rem;
   margin: 0;
+  opacity: 0.9;
+  font-weight: 400;
+  color: white;
 }
 
 .generate-btn {
@@ -34,21 +59,30 @@
   padding: 1rem 2rem;
   border-radius: 8px;
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
 }
 
 .generate-btn:hover {
   background: #229954;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4);
 }
 
 .generate-btn:disabled {
   background: #95a5a6;
   cursor: not-allowed;
+  transform: none;
 }
 
 .certificates-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 2rem 2rem;
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: 2rem;
@@ -88,26 +122,26 @@
   background: #f8fbff;
 }
 
-.cert-header {
+.certificates-item-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
 }
 
-.cert-header h4 {
+.certificates-item-header h4 {
   font-size: 1rem;
   color: #2c3e50;
   margin: 0;
 }
 
-.cert-id {
+.certificates-item-id {
   font-size: 0.8rem;
   color: #95a5a6;
   font-family: monospace;
 }
 
-.cert-details {
+.certificates-item-details {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -125,7 +159,7 @@
   font-weight: 500;
 }
 
-.cert-date {
+.certificates-item-date {
   font-size: 0.8rem;
   color: #95a5a6;
 }
@@ -138,25 +172,45 @@
   border: 1px solid #e1e8ed;
 }
 
-.cert-actions {
+.certificates-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 1rem;
   margin-bottom: 2rem;
 }
 
-.download-btn {
-  background: #3498db;
+.download-btn,
+.show-cert-btn {
   color: white;
   border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  padding: 0.85rem 1.75rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.download-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .download-btn:hover {
-  background: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.show-cert-btn {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+}
+
+.show-cert-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
 }
 
 .certificate-document {
@@ -166,20 +220,20 @@
   background: #fafbfc;
 }
 
-.cert-title {
+.certificates-title {
   text-align: center;
   margin-bottom: 2rem;
   padding-bottom: 1rem;
   border-bottom: 2px solid #3498db;
 }
 
-.cert-title h2 {
+.certificates-title h2 {
   font-size: 2rem;
   color: #2c3e50;
   margin: 0 0 1rem 0;
 }
 
-.cert-badges {
+.certificates-badges {
   display: flex;
   justify-content: center;
   gap: 1rem;
@@ -202,20 +256,20 @@
   color: #3498db;
 }
 
-.cert-sections {
+.certificates-sections {
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
 
-.cert-section {
+.certificates-section {
   background: white;
   border-radius: 8px;
   padding: 1.5rem;
   border: 1px solid #e1e8ed;
 }
 
-.cert-section h3 {
+.certificates-section h3 {
   font-size: 1.2rem;
   color: #2c3e50;
   margin: 0 0 1rem 0;

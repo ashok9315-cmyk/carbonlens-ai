@@ -11,18 +11,20 @@ import CarbonAnalysis from './components/CarbonAnalysis';
 import Optimizations from './components/Optimizations';
 import Certificates from './components/Certificates';
 import CertificateVerification from './components/CertificateVerification';
+import LandingPage from './components/LandingPage';
 import Navigation from './components/Navigation';
 
 const amplifyConfig = awsConfig;
 
 Amplify.configure(amplifyConfig);
 
-// Public component for certificate verification
+// Public component for certificate verification and landing page
 const PublicApp = () => {
   return (
     <Router>
       <div className="App">
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/certificates/verify/:certificateId" element={<CertificateVerification />} />
           <Route path="/*" element={<AuthenticatedApp />} />
         </Routes>
@@ -38,11 +40,12 @@ const AuthenticatedAppComponent = ({ signOut, user }) => {
       <Navigation user={user} signOut={signOut} />
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/upload" element={<DocumentUpload />} />
           <Route path="/analysis" element={<CarbonAnalysis />} />
           <Route path="/optimizations" element={<Optimizations />} />
           <Route path="/certificates" element={<Certificates />} />
+          <Route path="*" element={<Dashboard />} />
         </Routes>
       </main>
     </>
