@@ -41,7 +41,7 @@ const Dashboard = () => {
       setLoading(true);
       setError(null);
       
-      console.log('Loading dashboard data for user:', email || 'anonymous');
+      console.log('Loading dashboard data for user :', email || 'anonymous');
       
       const response = await API.get('carbonlens-api', '/dashboard', {
         headers: email ? { 'x-user-email': email } : {}
